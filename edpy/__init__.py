@@ -1,3 +1,6 @@
-# import * only import high level functions
-__all__ = ['extract_annual_output','extract_monthly_output','extract_treering',
-           'plot_annual','plot_monthly']
+# automatically import high-level functions
+from . import extract
+from .extract import *
+from . import plot
+from .plot import *
+

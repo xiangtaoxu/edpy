@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 from matplotlib.patches import Polygon, Circle
 from matplotlib.collections import PatchCollection
 
-from extract_utils import dbh_size_list,hite_size_list
+from .extract_utils import dbh_size_list,hite_size_list
 
 
 #########################################
