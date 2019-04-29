@@ -307,7 +307,8 @@ def extract_monthly(
     output_pft_vars = np.sort(list(set(output_pft_vars) | set(voi)))
 
     # third some size level data
-    output_size_vars = ['AGB','MMEAN_LAI','BA','NPLANT','DDBH_DT','MMEAN_MORT_RATE']
+    output_size_vars = ['AGB','MMEAN_LAI','BA','NPLANT','MMEAN_GPP','MMEAN_NPP']
+    output_size_vars = np.sort(list(set(output_size_vars) | set(voi)))
 
 
     #------------------  Loop Over Years  ---------------------------------#

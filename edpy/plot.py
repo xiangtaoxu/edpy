@@ -586,6 +586,184 @@ def plot_monthly(
     # for now only plot census time scale
     page_num = 0
 
+    # first timeseries
+    # plot the average seasonality of the simulated forests
+    df_fn = data_dir + data_pf + 'monthly.csv'
+    data_df = pd.read_csv(df_fn)
+
+    month_range = np.arange(1,13)
+
+    # by default we have seasonality of 
+    # MMEAN_ATM_TEMP, MMEAN_PCPG, MMEAN_ATM_RSHORT,
+    # MMEAN_ATM_VPDEF (4 atmospheric forcing)
+    # MMEAN_GPP, MMEAN_NPP, MMEAN_NEE, MMEAN_TRANSP MMEAN_ET, MMEAN_SH (6 ecosystem fluxes)
+    # 5 by 2 panels
+    panel_layout = (5,2)
+    figsize=(pdf.w * 0.9,pdf.h*0.9)
+    voi_plots = ['MMEAN_ATM_TEMP_PY','MMEAN_PCPG_PY','MMEAN_ATM_RSHORT_PY',
+                'MMEAN_ATM_VPDEF_PY','MMEAN_GPP_PY','MMEAN_NPP_PY','MMEAN_CARBON_AC_PY',
+                'MMEAN_TRANSP_PY','MMEAN_VAPOR_AC_PY','MMEAN_SENSIBLE_AC_PY']
+
+    # prepare data
+    data_plots = []
+    for iv, voi in enumerate(voi_plots):
+        voi_data = data_df[voi].values
+        if voi == 'MMEAN_CARBON_AC_PY':
+            # CARBON_AC_PY is in umol/m2/s
+            voi_data *= ( 1e-6 * 12 / 1000 * 86400 * 365) # convert to kgC/m2/yr
+        elif voi == 'MMEAN_PCPG_PY':
+            # mm/s
+            voi_data *= (86400 * 30.) # convert to mm/month
+        elif voi == 'MMEAN_ATM_TEMP_PY':
+            voi_data -= 273.15 # convert from K to degC
+        elif voi == 'MMEAN_VAPOR_AC_PY':
+            voi_data *= (-1 * 86400 * 30. ) # convert to mm/month
+        elif voi == 'MMEAN_TRANSP_PY':
+            voi_data *= (86400 * 30.) # convert to mm/month
+        elif voi == 'MMEAN_SENSIBLE_AC_PY':
+            voi_data *= (-1.)
+
+
+
+        month_data = np.zeros((len(month_range),),dtype=np.float)
+        # loop over month to get the average
+        for imonth, month in enumerate(month_range):
+            data_mask = (data_df['month'].values.astype(int) == month)
+            month_data[imonth] = np.nanmean(voi_data[data_mask])
+
+        data_plots.append(month_data)
+
+    voi_labels = ['Tair [degC]','P [mm/month]','Rshort [W/m2]','VPD [Pa]',
+                  'GPP [kgC/m2/yr]','NPP [kgC/m2/yr]','NEE [kgC/m2/yr]',
+                  'Transp [mm/month]','ET [mm/month]','SH [W/m2]']
+
+    fig,axes = plt.subplots(panel_layout[0],panel_layout[1],figsize=figsize,sharex=True)
+    for i, ax in enumerate(axes.ravel()):
+
+        ax.plot(month_range,data_plots[i],'k--o',lw=2)
+        ax.set_xlim(0,13)
+        ax.set_ylabel(voi_labels[i])
+    
+    # save the page
+    fig.tight_layout()
+    fig_fn = out_dir + data_pf + 'month_diagnostics_p{:d}.png'.format(page_num)
+    page_num += 1
+    plt.savefig(fig_fn,dpi=300)
+    plt.close(fig)
+
+
+
+    # add the figure into pdf
+    pdf.add_page()
+    pdf.ln()
+    pdf.image(fig_fn,x=pdf.w*0.05,y=pdf.h*0.05,
+            w=figsize[0],h=figsize[1])
+
+
+    # MMEAN_LAI by PFT, MMEAN_GPP by PFT, MMEAN_NPP by PFT (3)
+    # MMEAN_LAI by DBH, MMEAN_GPP by DBH, MMEAN_NPP by DBH (3)
+    # MMEAN_LAI by HITE, MMEAN_GPP by HITE, MMEAN_NPP by HITE (3)
+    # 3 figures each one has 3 panels
+
+
+#    # we will plot all of them in 1 page
+#    # each panel has 5'' wide and ~ 1 inch in height (too condensed?)
+#    # if there are more, we split them into different pages
+#    voi_pft = ['AGB','LAI','BA10','NPLANT10']
+#    voi_size = ['AGB','LAI','BA','NPLANT']
+#    time_unit = 'year'
+#
+#    # read the csv
+#    split_num = int(np.ceil(float(len(voi_pft)) / 5.))
+#
+#    page_num = 1
+#    # loop over split_num
+#    for isp in np.arange(split_num):
+#        # get # of vars in this category
+#        var_num = min(5,(len(voi_pft) - isp * 5))
+#        figsize=(pdf.w * 0.9,pdf.h*0.9)
+#        fig,axes = plt.subplots(var_num,1,figsize=figsize,sharex=True)
+#        for i, ax in enumerate(axes):
+#            if i == var_num - 1:
+#                # last one
+#                xlabel_on = True
+#            else:
+#                xlabel_on = False
+#            voi_plot = voi_pft[isp*5+i]
+#
+#            # for PFT
+#            # first prepare data
+#            if voi_plot in ['BA','BA10','NPLANT','NPLANT10']:
+#                # do not include grasses
+#                pft_mask = (np.array(pft_list) != 1)
+#            else:
+#                pft_mask = (np.array(pft_list) > 0)
+#
+#            pft_list_plot = np.array(pft_list)[pft_mask]
+#            pft_names_plot = np.array(pft_names)[pft_mask]
+#            pft_colors_plot = np.array(PFT_COLORS[np.array(pft_list_plot).astype(int)])
+#
+#            # prepare data
+#            # aggregate data to PFT average
+#            var_data = np.zeros((len(pft_list_plot),
+#                                 len(time_data)))
+#
+#            if voi_plot in ['NPLANT','NPLANT10']:
+#                var_scaler = 1.e4
+#            else:
+#                var_scaler = 1.
+#
+#            if voi_plot in ['BA10','NPLANT10']:
+#                voi_extract = voi_plot[0:-2]
+#            else:
+#                voi_extract = voi_plot
+#
+#            for ipft, pft in enumerate(pft_list_plot):
+#                for isize, size_edge in enumerate(dbh_size_list[1]):
+#                    col_name = '{:s}_PFT_{:d}_{:s}_{:d}'.format(
+#                        voi_extract,pft,dbh_size_list[0],isize)
+#
+#                    if ((voi_plot in ['BA10','NPLANT10']) and
+#                        isize == 0
+#                       ):
+#                        # ignore cohorts with DBH < 10cm
+#                        continue
+#            
+#                    temp_data = data_df[col_name].values * var_scaler
+#                    temp_data[np.isnan(temp_data)] = 0.
+#                    var_data[ipft,:] += temp_data
+#
+#
+#
+#            plut.area_timeseries(ax,time_data,time_unit,
+#                            var_data,voi_plot,voi_unit_dict[voi_plot],
+#                            var_labels=pft_names_plot,
+#                            xlabel_on=xlabel_on,
+#                            color_list=pft_colors_plot)
+#
+#            if i == 0:
+#                handles, labels = ax.get_legend_handles_labels()
+#                ax.legend(handles,labels,fontsize=7,loc='upper left',
+#                          ncol=np.maximum(1,len(pft_list)//3),
+#                          frameon=False)
+#       
+#        # save the page
+#        fig.tight_layout()
+#        fig_fn = out_dir + data_pf + 'annual_diagnostics_p{:d}.png'.format(page_num)
+#        page_num += 1
+#        plt.savefig(fig_fn,dpi=300)
+#        plt.close(fig)
+#
+#
+#
+#        # add the figure into pdf
+#        pdf.add_page()
+#        pdf.ln()
+#        pdf.image(fig_fn,x=pdf.w*0.05,y=pdf.h*0.05,
+#              w=figsize[0],h=figsize[1])
+
+
+
 #    # plot size distributions
 #    voi_size = ['AGB','BA']
 #
