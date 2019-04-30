@@ -5,7 +5,7 @@ import numpy as np
 import sys
 import os
 import pandas as pd
-sys.path.append('/n/home10/xiangtao/git_repos/edpy/')
+sys.path.append('../../edpy/')
 import edpy as edpy
 
 # default values for input
@@ -18,9 +18,15 @@ output_yearz = 1919
 data_dir = './data/'
 figure_dir = './figure/'
 
+# create the directory
+if not os.path.exists(data_dir):
+    os.mkdir(data_dir)
+
+if not os.path.exists(figure_dir):
+    os.mkdir(figure_dir)
+
 # get the model prefix as the prefix for the output csv file and figure file
 sim_pf = pf_name.split('/')[-1] + '_'
-print(sim_pf)
 
 # extract annual
 edpy.extract_annual(

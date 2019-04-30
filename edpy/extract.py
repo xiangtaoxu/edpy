@@ -303,11 +303,11 @@ def extract_monthly(
     #output_soil_vars = ['MMEAN_SOIL_MSTPOT_PY'] # need to be added later
 
     # second some pft level data
-    output_pft_vars = ['AGB','MMEAN_LAI','BA','NPLANT','MMEAN_GPP','MMEAN_NPP']
+    output_pft_vars = ['AGB','MMEAN_LAI','BA','NPLANT','MMEAN_GPP','MMEAN_NPPDAILY']
     output_pft_vars = np.sort(list(set(output_pft_vars) | set(voi)))
 
     # third some size level data
-    output_size_vars = ['AGB','MMEAN_LAI','BA','NPLANT','MMEAN_GPP','MMEAN_NPP']
+    output_size_vars = ['AGB','MMEAN_LAI','BA','NPLANT','MMEAN_GPP','MMEAN_NPPDAILY']
     output_size_vars = np.sort(list(set(output_size_vars) | set(voi)))
 
 
