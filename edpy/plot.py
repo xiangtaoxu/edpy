@@ -418,16 +418,27 @@ def plot_annual(
 
     patch_num = len(patch_age_to_plot)
 
+    row_num = np.maximum(4,patch_num)
+
     # create a subset of dataframe to plot
     # first loop over vars
     for ivar, var_name in enumerate(voi_size):
         # create a figure
-        figsize = (pdf.w * 0.9,pdf.h * 0.9 * patch_num / 4.)
-        fig,axes = plt.subplots(patch_num,2,figsize=figsize,sharey=True)
+        figsize = (pdf.w * 0.9,pdf.h * 0.9 * row_num / 4.)
+        fig,axes = plt.subplots(row_num,2,figsize=figsize,sharey=True)
         for i, row in enumerate(axes):
+            if i >= patch_num:
+                # turn off the axis
+                for j, ax in enumerate(row):
+                    ax.axis('off')
+
+                # skip the rest of the plotting
+                continue
+
             # get subset of data
             patch_mask = csv_df['PATCH_AGE'].values == patch_age_to_plot[i]
             plot_df = csv_df.loc[patch_mask,:]
+
             for j, ax in enumerate(row):
                 if j == 0:
                     ylabel_on = True
@@ -781,7 +792,7 @@ def plot_monthly(
         
     # save the page
     fig.tight_layout()
-    fig_fn = out_dir + data_pf + 'annual_diagnostics_p{:d}.png'.format(page_num)
+    fig_fn = out_dir + data_pf + 'monthly_diagnostics_p{:d}.png'.format(page_num)
     page_num += 1
     plt.savefig(fig_fn,dpi=300)
     plt.close(fig)
