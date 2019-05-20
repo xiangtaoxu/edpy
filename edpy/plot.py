@@ -605,15 +605,17 @@ def plot_monthly(
     month_range = np.arange(1,13)
 
     # by default we have seasonality of 
-    # MMEAN_ATM_TEMP, MMEAN_PCPG, MMEAN_ATM_RSHORT,
-    # MMEAN_ATM_VPDEF (4 atmospheric forcing)
-    # MMEAN_GPP, MMEAN_NPP, MMEAN_NEE, MMEAN_TRANSP MMEAN_ET, MMEAN_SH (6 ecosystem fluxes)
-    # 5 by 2 panels
-    panel_layout = (5,2)
+    # MMEAN_ATM_TEMP, MMEAN_PCPG, MMEAN_ATM_RSHORT, MMEAN_ATM_VPDEF (4 atmospheric forcing)
+    # MMEAN_GPP, MMEAN_NPP, MMEAN_LEAF_RESP, MMEAN_STEM_RESP, MMEAN_ROOT_RESP,
+    # MMEAN_NEE, MMEAN_ET, MMEAN_SH (8 ecosystem fluxes)
+    # in total 12 panels
+    # 4 by 3 panels
+    panel_layout = (4,3)
     figsize=(pdf.w * 0.9,pdf.h*0.9)
     voi_plots = ['MMEAN_ATM_TEMP_PY','MMEAN_PCPG_PY','MMEAN_ATM_RSHORT_PY',
-                'MMEAN_ATM_VPDEF_PY','MMEAN_GPP_PY','MMEAN_NPP_PY','MMEAN_CARBON_AC_PY',
-                'MMEAN_TRANSP_PY','MMEAN_VAPOR_AC_PY','MMEAN_SENSIBLE_AC_PY']
+                'MMEAN_ATM_VPDEF_PY','MMEAN_GPP_PY','MMEAN_NPP_PY',
+                 'MMEAN_LEAF_RESP_PY','MMEAN_STEM_RESP_PY','MMEAN_ROOT_RESP_PY',
+                 'MMEAN_CARBON_AC_PY','MMEAN_VAPOR_AC_PY','MMEAN_SENSIBLE_AC_PY']
 
     # prepare data
     data_plots = []
@@ -645,8 +647,9 @@ def plot_monthly(
         data_plots.append(month_data)
 
     voi_labels = ['Tair [degC]','P [mm/month]','Rshort [W/m2]','VPD [Pa]',
-                  'GPP [kgC/m2/yr]','NPP [kgC/m2/yr]','NEE [kgC/m2/yr]',
-                  'Transp [mm/month]','ET [mm/month]','SH [W/m2]']
+                  'GPP [kgC/m2/yr]','NPP [kgC/m2/yr]','Rleaf [kgC/m2/yr]',
+                  'Rstem [kgC/m2/yr]','Rroot [kgC/m2/yr]','NEE [kgC/m2/yr]',
+                  'ET [mm/month]','SH [W/m2]']
 
     fig,axes = plt.subplots(panel_layout[0],panel_layout[1],figsize=figsize,sharex=True)
     for i, ax in enumerate(axes.ravel()):
@@ -681,13 +684,13 @@ def plot_monthly(
 #    # each panel has 5'' wide and ~ 1 inch in height (too condensed?)
 #    # if there are more, we split them into different pages
     time_unit='month'
-    voi_plots = ['MMEAN_LAI','MMEAN_GPP','MMEAN_NPPDAILY']
-    voi_names = ['LAI','GPP','NPP']
-    voi_units = ['m2/m2','kgC/m2/yr','kgC/m2/yr']
+    voi_plots = ['MMEAN_LAI','MMEAN_GPP']
+    voi_names = ['LAI','GPP',]
+    voi_units = ['m2/m2','kgC/m2/yr']
 
     # there are 3 by 3 panels
     figsize=(pdf.w * 0.9,pdf.h*0.9)
-    fig,axes = plt.subplots(3,3,figsize=figsize,sharex=True)
+    fig,axes = plt.subplots(3,2,figsize=figsize,sharex=True)
     for i, row in enumerate(axes):
         for j, ax in enumerate(row):
             # each column has the same voi

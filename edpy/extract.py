@@ -295,19 +295,19 @@ def extract_monthly(
     # using extract_avg
     output_met_vars = ['MMEAN_ATM_TEMP_PY','MMEAN_PCPG_PY','MMEAN_ATM_RSHORT_PY',
                        'MMEAN_ATM_VPDEF_PY','MMEAN_ATM_CO2_PY']
-    output_flux_vars = ['MMEAN_GPP_PY','MMEAN_NPP_PY','MMEAN_CARBON_AC_PY',
-                        'MMEAN_TRANSP_PY','MMEAN_VAPOR_AC_PY',
-                        'MMEAN_SENSIBLE_AC_PY']
+    output_flux_vars = ['MMEAN_GPP_PY','MMEAN_NPP_PY','MMEAN_LEAF_RESP_PY',
+                        'MMEAN_STEM_RESP_PY','MMEAN_ROOT_RESP_PY','MMEAN_CARBON_AC_PY',
+                        'MMEAN_TRANSP_PY','MMEAN_VAPOR_AC_PY','MMEAN_SENSIBLE_AC_PY']
 
     # TODO: add extract soil variables
     #output_soil_vars = ['MMEAN_SOIL_MSTPOT_PY'] # need to be added later
 
     # second some pft level data
-    output_pft_vars = ['AGB','MMEAN_LAI','BA','NPLANT','MMEAN_GPP','MMEAN_NPPDAILY']
+    output_pft_vars = ['AGB','MMEAN_LAI','BA','NPLANT']
     output_pft_vars = np.sort(list(set(output_pft_vars) | set(voi)))
 
     # third some size level data
-    output_size_vars = ['AGB','MMEAN_LAI','BA','NPLANT','MMEAN_GPP','MMEAN_NPPDAILY']
+    output_size_vars = ['AGB','MMEAN_LAI','BA','NPLANT']
     output_size_vars = np.sort(list(set(output_size_vars) | set(voi)))
 
 
