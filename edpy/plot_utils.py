@@ -12,6 +12,7 @@ from matplotlib.patches import Polygon, Circle
 from matplotlib.collections import PatchCollection
 
 from .extract_utils import dbh_size_list,hite_size_list
+from .extract_utils import dbh_size_list_fine,hite_size_list_fine
 
 
 #########################################
@@ -276,14 +277,22 @@ def bar_size_pft(
 def forest_2d_profile(
     ax : 'axis handle for the plot',
     individual_df : 'dataframe for individual level information',
-    pft_list : 'list for PFTs',
-    pft_names : 'Name of PFTs',
+    pft_size_df : 'dataframe for pft size level information' = None,
+    pft_list : 'list for PFTs' = [],
+    pft_names : 'Name of PFTs' = [],
     color_list : 'color for PFTs' = PFT_COLORS
 ):
 
     '''
         Plot a 2d forest profile based on the simulation results
     '''
+
+    # first get pft list and pft_names if they are empty
+    if len(pft_list) == 0:
+        pft_list = np.unique(individual_df['PFT'].values.astype(int)).tolist()
+
+    if len(pft_names) == 0:
+        pft_names = ['PFT {:d}'.format(pft) for pft in pft_list]
 
     # some constant for plot
     site_x = 100. # m
@@ -346,8 +355,37 @@ def forest_2d_profile(
         ax.add_collection(p)
 
     ax.plot([0.,site_x],[0.,0.],'k-',lw=2.)   
-    ax.set_xlim((-10.,site_x+10))
+    ax.set_xlim((-10.,site_x+20))
     ax.set_ylim((0.,60.))
+
+    # plot vertical profile of LAI
+    # use hite_size_list_fine but bin to every 5 meter
+    size_list = hite_size_list_fine
+    if pft_size_df is not None:
+       pft_size_lai = np.zeros((len(size_list[1]),len(pft_list)))
+       for ipft, pft in enumerate(pft_list):
+           for isize, size_edge in enumerate(size_list[1]):
+                col_name = 'LAI_PFT_{:d}_{:s}_{:d}'.format(pft,size_list[0],isize)
+                pft_size_lai[isize,ipft] = pft_size_df[col_name].values[0]
+
+       # reset nan to zero
+       pft_size_lai[np.isnan(pft_size_lai)] = 0.
+
+       # now we use fill_betweenx to plot the vertical profile of LAI
+
+       # for plot, we double the LAI
+       lai_scaler = 10.
+       pft_size_lai *= lai_scaler
+
+       # 
+       cur_x = np.zeros((len(size_list[1]),)) + site_x + 5.
+       for ipft, pft in enumerate(pft_list):
+           print(size_list[1])
+           print(cur_x)
+           ax.fill_betweenx(size_list[1],
+                            cur_x + pft_size_lai[:,ipft],cur_x,lw=0.5,
+                            facecolors=color_list[pft],alpha=0.75,step='post')
+           cur_x += pft_size_lai[:,ipft]
 
     ax.set_xticks([0.,site_x])
     ax.set_xticklabels(['Old Patch','New Patch'],ha='center',fontsize=7)

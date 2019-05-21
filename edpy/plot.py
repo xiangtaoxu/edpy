@@ -307,95 +307,7 @@ def plot_annual(
               w=figsize[0],h=figsize[1])
 
     
-#    # plot demography rates, changes with PFT and Size
-#    # read  csv
-#    df_fn = data_dir + data_pf + 'annual_demography.csv'
-#    csv_df = pd.read_csv(df_fn)
-#    #years to plot # only plot 3 years, first, middle, last
-#    yeara_plot = np.unique(csv_df['yeara'].values)
-#    yearz_plot = np.unique(csv_df['yearz'].values)
-#    year_num = len(yeara_plot)
-#    if year_num > 2:
-#        yeara_plot = yeara_plot[[0,year_num//2,year_num-1]]
-#        yearz_plot = yearz_plot[[0,year_num//2,year_num-1]]
-#
-#    year_num = len(yeara_plot)
-#
-#    figsize = (pdf.w * 0.9,pdf.h * 0.9)
-#    fig,axes = plt.subplots(year_num,2,figsize=figsize,sharey=True,sharex=True)
-#    for i, row in enumerate(axes):
-#        # year to plot
-#        yeara = yeara_plot[i]
-#        yearz = yearz_plot[i]
-#        # get subset of data
-#        for j, ax in enumerate(row):
-#            if j == 0:
-#                ylabel='BA GROWTH [%]'
-#                y_var = 'BA_GROWTH_FRAC' 
-#            elif j == 1:
-#                ylabel='BA Mortality [%]'
-#                y_var = 'BA_MORT_FRAC' 
-#
-#            # first prepare data
-#            sub_df = csv_df[(csv_df['yeara'] == yeara) & (csv_df['yearz'] == yearz)]
-#            demo_pft = pft_list[:]
-#            demo_pft_names = pft_names[:]
-#            if type(demo_pft).__module__ != np.__name__:
-#                demo_pft = np.array(demo_pft)
-#
-#            if type(demo_pft_names).__module__ != np.__name__:
-#                demo_pft_names = np.array(demo_pft_names)
-#
-#            demo_pft_names = demo_pft_names[demo_pft != 1] # exclude grasses
-#            demo_pft = demo_pft[demo_pft != 1] # exclude grasses
-#            
-#            demo_data = np.zeros((len(dbh_size_list[1]),len(demo_pft)))
-#
-#            for ipft, pft in enumerate(demo_pft):
-#                for isize, size_edge in enumerate(dbh_size_list[1]):
-#                    var_name = '{:s}_PFT_{:d}_{:s}_{:d}'.format(
-#                        y_var,pft,dbh_size_list[0],isize)
-#                    demo_data[isize,ipft] = sub_df[var_name].values[0] * 100.
-#
-#            x_data = np.zeros((len(dbh_size_list[1]),))
-#            for isize, size_edge in enumerate(dbh_size_list[1]):
-#                if size_edge == dbh_size_list[1][-1]:
-#                    # last one
-#                    x_data[isize] = (dbh_size_list[1][isize] + 
-#                                     (dbh_size_list[1][isize] - dbh_size_list[1][isize-1])
-#                                     / 2)
-#                else:
-#                    x_data[isize] = (dbh_size_list[1][isize]
-#                                    +dbh_size_list[1][isize+1]) / 2
-#
-#            # plot the data
-#            for ipft, pft in enumerate(demo_pft):
-#                ax.plot(x_data,demo_data[:,ipft],lw=2,marker='o',color=PFT_COLORS[pft-1],
-#                        label=demo_pft_names[ipft])
-#
-#            # deal with axes and title
-#            ax.set_xticks(dbh_size_list[1])
-#            ax.set_xlabel('DBH [cm]',fontsize=8)
-#            ax.set_ylabel(ylabel,fontsize=8)
-#            ax.set_title('{:d}-{:d}'.format(yeara,yearz),fontsize=8)
-#
-#            # legend
-#            if i == 0 and j == 0:
-#                handles, labels = ax.get_legend_handles_labels()
-#                ax.legend(handles,labels,fontsize=7,loc='upper right',ncol=len(pft_list)//3,
-#                          frameon=False)
-#    # save the page
-#    fig.tight_layout()
-#    fig_fn = out_dir + data_pf + 'annual_diagnostics_p{:d}.png'.format(page_num)
-#    page_num += 1
-#    plt.savefig(fig_fn,dpi=300)
-#    plt.close(fig)
 
-#    # add the figure into pdf
-#    pdf.add_page()
-#    pdf.ln()
-#    pdf.image(fig_fn,x=pdf.w*0.05,y=pdf.h*0.05,
-#          w=figsize[0],h=figsize[1])
 
 
     # plot pft size distributions for three patches (young mid old)
@@ -477,63 +389,14 @@ def plot_annual(
 
 
     if include_census:
-#        # plot size distributions
-#        voi_size = ['AGB','LAI','BA','NPLANT']
-#
-#        # read csv for size plots
-#        # read the csv for individual plots
-#        df_fn = data_dir + data_pf + 'annual_pft_size.csv'
-#        csv_df = pd.read_csv(df_fn)
-#
-#        #years to plot
-#        year_to_plot = np.unique(csv_df['year'].values)
-#        year_num = len(year_to_plot)
-#
-#        # first loop over vars
-#        for ivar, var_name in enumerate(voi_size):
-#            # create a figure
-#            figsize = (pdf.w * 0.9,pdf.h * 0.9)
-#            fig,axes = plt.subplots(year_num,2,figsize=figsize,sharey=True)
-#            for i, row in enumerate(axes):
-#                # get subset of data
-#                for j, ax in enumerate(row):
-#                    if j == 0:
-#                        ylabel_on = True
-#                        size_list = ('D',np.arange(0.,200.+1.,10.))
-#                    elif j == 1:
-#                        ylabel_on = False
-#                        size_list = ('H',np.arange(0.,50.+1.,5.))
-#
-#                    bar_size(ax,size_list,csv_df,i,var_name,voi_unit_dict[var_name],
-#                             pft_list,pft_names,ylabel_on=ylabel_on)
-#
-#                    if i == 0 and j == 0:
-#                        handles, labels = ax.get_legend_handles_labels()
-#                        ax.legend(handles,labels,fontsize=7,loc='upper left',ncol=len(pft_list)//3,
-#                                  frameon=False)
-#
-#                    # plot the year
-#                    if j == 0:
-#                        ax.set_title('{:d}'.format(year_to_plot[i]))
-#           
-#            # save the page
-#            fig.tight_layout()
-#            fig_fn = out_dir + data_pf + 'annual_diagnostics_p{:d}.png'.format(page_num)
-#            page_num += 1
-#            plt.savefig(fig_fn,dpi=300)
-#            plt.close(fig)
-#
-#            # add the figure into pdf
-#            pdf.add_page()
-#            pdf.ln()
-#            pdf.image(fig_fn,x=pdf.w*0.05,y=pdf.h*0.05,
-#                  w=figsize[0],h=figsize[1])
-
 
 
         # read the csv for individual plots
-        df_fn = data_dir + data_pf + 'annual_individual_plot.csv'
-        individual_df = pd.read_csv(df_fn)
+        individual_fn = data_dir + data_pf + 'annual_individual_plot.csv'
+        individual_df = pd.read_csv(individual_fn)
+
+        pft_size_fn = data_dir + data_pf + 'annual_pft_size.csv'
+        pft_size_df = pd.read_csv(pft_size_fn)
 
         #years to plot
         pdf.add_page()
@@ -544,12 +407,16 @@ def plot_annual(
             figsize=(pdf.w / 2. * 0.9  ,pdf.h / 5. * 0.9)
             fig = plt.figure(figsize=figsize)
             ax = fig.add_subplot(1,1,1)
-            sub_df = individual_df[individual_df['year'].values == year]
-            plut.forest_2d_profile(ax,sub_df,pft_list,pft_names)
+            sub_individual_df = individual_df[individual_df['year'].values == year]
+            sub_pft_size_df = pft_size_df[pft_size_df['year'].values == year]
+            plut.forest_2d_profile(ax,
+                                   sub_individual_df,
+                                   pft_size_df,
+                                   pft_list,pft_names)
             ax.set_title('{:d}'.format(year))
             if iyear == 0:
                 handles, labels = ax.get_legend_handles_labels()
-                ax.legend(handles,labels,fontsize=7,loc='upper left',
+                ax.legend(handles,labels,fontsize=7,loc='upper center',
                           ncol=np.maximum(1,len(pft_list)//2),
                           frameon=False)
 
@@ -874,6 +741,9 @@ def plot_monthly(
     df_fn = data_dir + data_pf + 'monthly_individual.csv'
     individual_df = pd.read_csv(df_fn)
 
+    df_fn = data_dir + data_pf + 'monthly_pft_size.csv'
+    pft_size_df = pd.read_csv(df_fn)
+
     #years to plot
     year_to_plot = np.unique(individual_df['year'].values).astype(int)
     year_num = len(year_to_plot)
@@ -881,12 +751,16 @@ def plot_monthly(
         figsize=(pdf.w / 2. * 0.9  ,pdf.h / 5. * 0.9)
         fig = plt.figure(figsize=figsize)
         ax = fig.add_subplot(1,1,1)
-        sub_df = individual_df[individual_df['year'].values == year]
-        plut.forest_2d_profile(ax,sub_df,pft_list,pft_names)
+        sub_individual_df = individual_df[individual_df['year'].values == year]
+        sub_pft_size_df = pft_size_df[pft_size_df['year'].values == year]
+        plut.forest_2d_profile(ax,
+                               sub_individual_df,
+                               pft_size_df,
+                               pft_list,pft_names)
         ax.set_title('{:d}'.format(year))
         if iyear == 0:
             handles, labels = ax.get_legend_handles_labels()
-            ax.legend(handles,labels,fontsize=7,loc='upper right',ncol=len(pft_list)//2,
+            ax.legend(handles,labels,fontsize=7,loc='upper center',ncol=len(pft_list)//2,
                       frameon=False)
 
 
