@@ -76,7 +76,7 @@ var_norm_an = ['LEAF_PSI','DMAX_LEAF_PSI','DMIN_LEAF_PSI',
 #------------------------------------------------------
 
 # Here we set arrays to record variables that do not need to followed by _CO
-var_noco = ['NPLANT','DDBH_DT','DBA_DT','HITE','BLEAF','BDEAD','BROOT']
+var_noco = ['DBH','PFT','NPLANT','DDBH_DT','DBA_DT','HITE','BLEAF','BDEAD','BROOT']
 
 # Here we set arrays to record variables that need to be summed to get cohort level results
 var_cosum = ['MORT_RATE','MMEAN_MORT_RATE']
@@ -86,6 +86,7 @@ dbh_size_list = ('D',[0,10,20,30,50,80])
 hite_size_list = ('H',[0,1.5,5,10,20,30])
 dbh_size_list_fine = ('D',np.arange(0.,200.+5.,10.))
 hite_size_list_fine = ('H',np.arange(0.,50.+1.,5.))
+qmean_num = 24 # qmean has hourly resolution
 ##################################################
 
 
@@ -118,6 +119,38 @@ def extract_avg(
             #
             print('''Only _PY output vars can be processed for now. Please add
                   the format for {:s} in the code.'''.format(var_name))
+
+    return
+
+def extract_qmean(
+     h5in : 'handle for .h5 file'
+    ,output_dict : 'dictionary to store output data'
+    ,voi : 'variables of interests'):
+    '''
+        Read ecosystem level average output
+    '''
+    # we don't need to read additional information
+
+    ################################################
+    for var_name in voi:
+        if var_name.split('_')[0] != 'QMEAN':
+            print('''Only include QMEAN variables in extract_qmean, yours is {:s}
+                  '''.format(var_name))
+            return -1
+
+        if var_name.split('_')[-1] == 'PY':
+            # this is polygon level variable,
+            # ravel the dimension and append to the corresponding column
+            output_dict[var_name] += np.ravel(h5in[var_name][:]).tolist()
+        elif var_name.split('_')[-1] == 'CO':
+            # this is cohort level variable
+            # loop over each cohort to append the data
+            output_data = np.array(h5in[var_name])
+            if output_data.shape[1] != qmean_num:
+                print('Error! The dimension of Qmean is wrong')
+                return -1
+            for ico in np.arange(output_data.shape[0]):
+                output_dict[var_name] += output_data[ico,:].ravel().tolist()
 
     return
 

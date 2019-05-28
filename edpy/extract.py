@@ -5,6 +5,7 @@ from . import extract_utils as exut
 from .extract_utils import dbh_size_list, hite_size_list
 from .extract_utils import dbh_size_list_fine, hite_size_list_fine
 from .extract_utils import individual_vars
+from .extract_utils import qmean_num
 from calendar import monthrange
 from datetime import datetime
 import h5py
@@ -530,6 +531,145 @@ def extract_monthly(
 
         del csv_individual_df
 
+
+
+    return
+
+################################################################
+# %% Extract Qmean output, which contains average diurnal cycles
+################################################################
+def extract_monthly_diurnal(
+     data_pf : 'path and prefix of the ED2 data, output file name would be automatically generated'
+    ,out_dir : 'output directory'
+    ,out_pf  : 'output prefix'
+    ,output_yeara   : 'start year',output_montha  : 'start month'
+    ,output_yearz   : 'end year' ,output_monthz  : 'end month'  
+    ,voi            : 'variable of interests (ecosystem average)' = ['AGB','LAI','BA','NPLANT']
+ ):
+    '''
+        This function aims to extract month average diurnal cycles
+
+        # for ecosystem level we are interested in the diurnal
+        # (1) meteorology, (2) flux, (3) canopy state variables
+
+        # for cohort level we are interested in the diurnal
+        # (1) leaf state, (2) carbon/water flux, (3) leaf micro-environment
+    '''
+
+    # Necessary time stamps
+    # time is the normalized year, used for plotting...
+    col_list = ['year','month','hour']
+
+
+    # first some polygon level data
+    # using extract_avg
+    polygon_qmean_vars = ['QMEAN_ATM_TEMP_PY','QMEAN_ATM_VPDEF_PY','QMEAN_PCPG_PY',
+                    'QMEAN_ATM_RSHORT_PY','QMEAN_ATM_PAR_PY','QMEAN_ATM_PAR_DIFF_PY',
+                    'QMEAN_CAN_TEMP_PY','QMEAN_CAN_VPDEF_PY','QMEAN_CAN_CO2_PY',
+                    'QMEAN_GPP_PY','QMEAN_NPP_PY','QMEAN_PLRESP_PY','QMEAN_NEP_PY',
+                    'QMEAN_LEAF_RESP_PY','QMEAN_STEM_RESP_PY','QMEAN_ROOT_RESP_PY',
+                    'QMEAN_WATER_SUPPLY_PY','QMEAN_TRANSP_PY']
+
+    # for now do not add size-pft specific aggregates
+
+
+    # second cohort level data
+    cohort_vars = ['DBH','PFT','HITE','NPLANT','LAI_CO']
+    cohort_qmean_vars = [
+                   'QMEAN_GPP_CO','QMEAN_NPP_CO','QMEAN_PLRESP_CO',
+                   'QMEAN_LEAF_RESP_CO','QMEAN_STEM_RESP_CO','QMEAN_ROOT_RESP_CO',
+                   'QMEAN_LEAF_TEMP_CO','QMEAN_LEAF_VPDEF_CO',
+                   'QMEAN_LEAF_GSW_CO','QMEAN_LINT_CO2_CO','QMEAN_A_NET_CO',
+                   'QMEAN_WATER_SUPPLY_CO','QMEAN_TRANSP_CO','QMEAN_LEAF_PSI_CO',
+                   'QMEAN_WOOD_PSI_CO','QMEAN_WFLUX_WL_CO',
+                   'QMEAN_PAR_L_CO','QMEAN_LIGHT_LEVEVL_CO']
+
+    # we save into two files, one for polygon and one for cohort
+
+    #------------------  Loop Over Years  ---------------------------------#
+    year_array = np.arange(output_yeara,output_yearz+1)
+    for iyear, year in enumerate(year_array):
+        #------------------  Loop Over Years  -----------------------------#
+        # Define/Clear the dict that stores output data
+        # we do this so that the memory does not explode
+
+        # first polygon level
+        output_polygon_dict={}
+        for var in col_list + polygon_qmean_vars:
+            # we initiate it as an empty array since we do not know how long it would be for
+            # cohort-level extractions
+            output_polygon_dict[var] = []
+
+        # second cohort level
+        output_cohort_dict={}
+        for var in col_list + cohort_vars + cohort_qmean_vars:
+            output_cohort_dict[var] = []
+
+        # loop over month
+        montha, monthz = 1, 12
+        if year == output_yeara:
+            montha = output_montha
+        if year == output_yearz:
+            monthz = output_monthz
+        month_array = np.arange(montha,monthz+1)
+
+
+        for month in month_array:
+
+            # read data
+            data_fn = '{:s}-Q-{:4d}-{:02d}-00-000000-g01.h5'.format(
+                data_pf,year,month)
+
+            if not os.path.isfile(data_fn):
+                print('{:s} doest not exist!'.format(data_fn))
+                # file does not exist
+                # Just ignore the file
+                continue
+
+            h5in    = h5py.File(data_fn,'r')
+
+            # first extract polygon vars
+            exut.extract_qmean(h5in,output_polygon_dict,polygon_qmean_vars)
+            # append time stamps
+            output_polygon_dict['year'] += ([year] * qmean_num)
+            output_polygon_dict['month'] += ([month] * qmean_num)
+            output_polygon_dict['hour'] += np.arange(1,24+1).tolist()
+
+            # second extract cohort vars
+            # first get number of cohort
+            cohort_num = len(h5in['DBH'][:])
+            exut.extract_qmean(h5in,output_cohort_dict,cohort_qmean_vars)
+            # append time stamps and cohort_vars
+            output_cohort_dict['year'] += ([year] * qmean_num * cohort_num)
+            output_cohort_dict['month'] += ([month] * qmean_num * cohort_num)
+            output_cohort_dict['hour'] += (np.arange(1,24+1).tolist() * cohort_num)
+            for var in cohort_vars:
+                output_cohort_dict[var] += (np.repeat(h5in[var][:],qmean_num).tolist())
+
+            h5in.close()
+
+        # save the extracted data to a dictionary
+        output_df = pd.DataFrame(data = output_polygon_dict)
+        output_fn = out_dir + out_pf + 'qmean_polygon.csv'
+        # if it is the first year overwrite
+        # otherwise append
+        if iyear == 0:
+            output_df.to_csv(output_fn,index=False,mode='w',header=True)
+        else:
+            output_df.to_csv(output_fn,index=False,mode='a',header=False)
+
+        del output_df
+
+        output_df = pd.DataFrame(data = output_cohort_dict)
+        output_fn = out_dir + out_pf + 'qmean_cohort.csv'
+        # if it is the first year overwrite
+        # otherwise append
+        if iyear == 0:
+            output_df.to_csv(output_fn,index=False,mode='w',header=True)
+        else:
+            output_df.to_csv(output_fn,index=False,mode='a',header=False)
+
+        del output_df
 
 
     return
