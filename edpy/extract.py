@@ -5,7 +5,6 @@ from . import extract_utils as exut
 from .extract_utils import dbh_size_list, hite_size_list
 from .extract_utils import dbh_size_list_fine, hite_size_list_fine
 from .extract_utils import individual_vars
-from .extract_utils import qmean_num
 from calendar import monthrange
 from datetime import datetime
 import h5py
@@ -545,6 +544,7 @@ def extract_monthly_diurnal(
     ,output_yeara   : 'start year',output_montha  : 'start month'
     ,output_yearz   : 'end year' ,output_monthz  : 'end month'  
     ,voi            : 'variable of interests (ecosystem average)' = ['AGB','LAI','BA','NPLANT']
+    ,include_cohort      : 'whether include cohort level variable' = False
  ):
     '''
         This function aims to extract month average diurnal cycles
@@ -582,7 +582,7 @@ def extract_monthly_diurnal(
                    'QMEAN_LEAF_GSW_CO','QMEAN_LINT_CO2_CO','QMEAN_A_NET_CO',
                    'QMEAN_WATER_SUPPLY_CO','QMEAN_TRANSP_CO','QMEAN_LEAF_PSI_CO',
                    'QMEAN_WOOD_PSI_CO','QMEAN_WFLUX_WL_CO',
-                   'QMEAN_PAR_L_CO','QMEAN_LIGHT_LEVEVL_CO']
+                   'QMEAN_PAR_L_CO','QMEAN_LIGHT_LEVEL_CO','QMEAN_LIGHT_CO']
 
     # we save into two files, one for polygon and one for cohort
 
@@ -628,12 +628,14 @@ def extract_monthly_diurnal(
 
             h5in    = h5py.File(data_fn,'r')
 
+            # 0. get qmean_num
+            qmean_num = np.array(h5in['QMEAN_GPP_PY']).shape[1]
             # first extract polygon vars
             exut.extract_qmean(h5in,output_polygon_dict,polygon_qmean_vars)
             # append time stamps
             output_polygon_dict['year'] += ([year] * qmean_num)
             output_polygon_dict['month'] += ([month] * qmean_num)
-            output_polygon_dict['hour'] += np.arange(1,24+1).tolist()
+            output_polygon_dict['hour'] += np.arange(1,qmean_num+1).tolist()
 
             # second extract cohort vars
             # first get number of cohort
@@ -642,7 +644,7 @@ def extract_monthly_diurnal(
             # append time stamps and cohort_vars
             output_cohort_dict['year'] += ([year] * qmean_num * cohort_num)
             output_cohort_dict['month'] += ([month] * qmean_num * cohort_num)
-            output_cohort_dict['hour'] += (np.arange(1,24+1).tolist() * cohort_num)
+            output_cohort_dict['hour'] += (np.arange(1,qmean_num+1).tolist() * cohort_num)
             for var in cohort_vars:
                 output_cohort_dict[var] += (np.repeat(h5in[var][:],qmean_num).tolist())
 

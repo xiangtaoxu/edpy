@@ -1358,3 +1358,114 @@ def plot_monthly(
 
 
     return
+
+
+# plot monthly diurnal output for a simulation and save results to a pdf
+def plot_monthly_diurnal(
+     data_dir : 'path of the csv data'
+    ,data_pf  : 'prefix of the csv data'
+    ,out_dir  : 'output directory'
+):
+    '''
+        For now, only include monthly average diurnal cycle at polygon level
+    '''
+    # first generate the final pdf name
+    pdf_name = out_dir + data_pf + 'monthly_diurnal_diagnostics.pdf'
+
+    # create a pdf class
+    pdf = FPDF('P','in','Letter') # Portrait, inch, Letter
+
+    # now we plot figures
+    # by default we assume letter size
+
+
+    # for now only plot census time scale
+    page_num = 0
+
+    # first timeseries
+    # plot the average seasonality of the simulated forests
+    df_fn = data_dir + data_pf + 'qmean_polygon.csv'
+    data_df = pd.read_csv(df_fn)
+
+    month_range = np.arange(1,13)
+    tod_range = np.unique(data_df['hour'].values) # time of day
+
+    # each page has 2 x 6 panels, each panel showing the average of one month
+    page_vars = [
+                ['QMEAN_ATM_TEMP_PY','QMEAN_CAN_TEMP_PY'],
+                ['QMEAN_ATM_VPDEF_PY','QMEAN_CAN_VPDEF_PY'],
+                ['QMEAN_ATM_RSHORT_PY','QMEAN_ATM_PAR_PY'],
+                ['QMEAN_GPP_PY','QMEAN_NPP_PY','QMEAN_PLRESP_PY','QMEAN_NEP_PY'],
+                ['QMEAN_LEAF_RESP_PY','QMEAN_STEM_RESP_PY','QMEAN_ROOT_RESP_PY'],
+                ['QMEAN_TRANSP_PY']
+                ]
+    page_units = ['degC','kPa','W/m2','kgC/m2/yr','kgC/m2/yr','mm/yr']
+
+    panel_layout = (6,2)
+    color_list=['k','r','g','b']
+
+    for ipage, voi_plots in enumerate(page_vars):
+
+        figsize=(pdf.w * 0.9,pdf.h*0.9)
+        # generate var names for legend
+        var_names = [var_name[6:len(var_name)-3] for var_name in voi_plots]
+
+        # prepare data
+        data_plots = []
+        for iv, voi in enumerate(voi_plots):
+            voi_data = np.zeros((len(month_range),len(tod_range),),dtype=float)
+            for imonth,month in enumerate(month_range):
+                for itime,time in enumerate(tod_range):
+                    data_mask = (
+                        (data_df['month'].values == month) & 
+                        (data_df['hour'].values == time))
+                    voi_data[imonth,itime] = np.nanmean(data_df[voi].values[data_mask])
+            # convert unit
+            if page_units[ipage] == 'degC':
+                voi_data -= 273.15
+            elif page_units[ipage] == 'kPa':
+                voi_data /= 1000.
+            elif page_units[ipage] == 'mm/yr':
+                voi_data *= (86400. * 365.)
+        
+            data_plots.append(voi_data)
+
+        fig,axes = plt.subplots(panel_layout[0],panel_layout[1],figsize=figsize,
+                                sharex=True,sharey=True)
+        for i, ax in enumerate(axes.ravel()):
+            for iv, voi in enumerate(voi_plots):
+                ax.plot(tod_range,data_plots[iv][i,:],
+                        c=color_list[iv],ls='-',lw=2,
+                        label=var_names[iv])
+
+            ax.set_ylabel(page_units[ipage])
+            ax.set_title('Month {:d}'.format(month_range[i]))
+            # set legend
+            if i == 0:
+                handles, labels = ax.get_legend_handles_labels()
+                ax.legend(handles,labels,fontsize=7,loc='upper left',
+                            ncol=np.maximum(1,len(handles)//3),
+                            frameon=False)
+
+        # save the page
+        fig.tight_layout()
+        fig_fn = out_dir + data_pf + 'qmean_diagnostics_p{:d}.png'.format(page_num)
+        page_num += 1
+        plt.savefig(fig_fn,dpi=300)
+        plt.close(fig)
+
+
+
+        # add the figure into pdf
+        pdf.add_page()
+        pdf.ln()
+        pdf.image(fig_fn,x=pdf.w*0.05,y=pdf.h*0.05,
+                w=figsize[0],h=figsize[1])
+
+
+    # save the pdf
+    pdf.output(name=pdf_name,dest='F')
+
+
+
+    return

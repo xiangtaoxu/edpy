@@ -65,8 +65,6 @@ edpy.plot_monthly(
     pft_names,
     include_census=True)
 
-# extract qmean
-edpy.extract_monthly_diurnal(pf_name,data_dir,sim_pf,1751,1,1751,12)
 
 
 # extract tree ring
@@ -79,3 +77,7 @@ edpy.extract_treering(
     last_month_of_year=12)
 
 
+# extract qmean
+edpy.extract_monthly_diurnal(pf_name,data_dir,sim_pf,1751,1,1751,12)
+# plot qmean
+edpy.plot_monthly_diurnal(data_dir,sim_pf,figure_dir)

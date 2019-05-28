@@ -86,7 +86,6 @@ dbh_size_list = ('D',[0,10,20,30,50,80])
 hite_size_list = ('H',[0,1.5,5,10,20,30])
 dbh_size_list_fine = ('D',np.arange(0.,200.+5.,10.))
 hite_size_list_fine = ('H',np.arange(0.,50.+1.,5.))
-qmean_num = 24 # qmean has hourly resolution
 ##################################################
 
 
@@ -145,12 +144,18 @@ def extract_qmean(
         elif var_name.split('_')[-1] == 'CO':
             # this is cohort level variable
             # loop over each cohort to append the data
-            output_data = np.array(h5in[var_name])
-            if output_data.shape[1] != qmean_num:
-                print('Error! The dimension of Qmean is wrong')
-                return -1
-            for ico in np.arange(output_data.shape[0]):
-                output_dict[var_name] += output_data[ico,:].ravel().tolist()
+
+            if var_name == 'QMEAN_LIGHT_CO':
+                # need to combine QMEAN_ATM_RSHORT_PY and QMEAN_LIGHT_LEVEL_CO
+                rshort_max = np.array(h5in['QMEAN_ATM_RSHORT_PY']).ravel()
+
+                output_data = np.array(h5in['QMEAN_LIGHT_LEVEL_CO'])
+                for ico in np.arange(output_data.shape[0]):
+                    output_dict[var_name] += (output_data[ico,:] * rshort_max).ravel().tolist()
+            else:
+                output_data = np.array(h5in[var_name])
+                for ico in np.arange(output_data.shape[0]):
+                    output_dict[var_name] += output_data[ico,:].ravel().tolist()
 
     return
 
