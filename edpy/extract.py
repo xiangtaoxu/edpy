@@ -676,6 +676,177 @@ def extract_monthly_diurnal(
 
     return
 
+################################################################
+# %% Extract Fmean output
+################################################################
+def extract_fast(
+     data_pf : 'path and prefix of the ED2 data, output file name would be automatically generated'
+    ,out_dir : 'output directory'
+    ,out_pf  : 'output prefix'
+    ,output_yeara   : 'start year',output_montha  : 'start month',output_daya: 'start day'
+    ,output_yearz   : 'end year' ,output_monthz  : 'end month', output_dayz: 'end day'
+    ,output_time_list : 'a list of strings consisting time of day'
+    ,voi            : 'variable of interests (ecosystem average)' = ['AGB','LAI','BA','NPLANT']
+    ,pft_list       : 'List of PFTs to include for pft VOIs' = []
+    ,include_cohort      : 'whether include cohort level variable' = False
+ ):
+    '''
+        This function aims to extract month average diurnal cycles
+
+        # for ecosystem level we are interested in the diurnal
+        # (1) meteorology, (2) flux, (3) canopy state variables
+
+        # for cohort level we are interested in the diurnal
+        # (1) leaf state, (2) carbon/water flux, (3) leaf micro-environment
+    '''
+
+    # Necessary time stamps
+    # time is the normalized year, used for plotting...
+    col_list = ['year','month','day','doy','hour','minute','second']
+    n_daytime = len(output_time_list)
+
+
+    # first some polygon level data
+    # using extract_avg
+    polygon_fmean_vars = [
+        'FMEAN_ATM_TEMP_PY','FMEAN_ATM_VPDEF_PY','FMEAN_ATM_RSHORT_PY',
+        'FMEAN_CAN_TEMP_PY','FMEAN_CAN_VPDEF_PY','FMEAN_CAN_CO2_PY',
+        'FMEAN_GPP_PY','FMEAN_NPP_PY','FMEAN_PLRESP_PY','FMEAN_NEP_PY',
+        'FMEAN_LEAF_RESP_PY','FMEAN_STEM_RESP_PY','FMEAN_ROOT_RESP_PY',
+        'FMEAN_TRANSP_PY']
+
+    # for now do not add size-pft specific aggregates
+
+
+    # second cohort level data
+    cohort_vars = ['DBH','PFT','HITE','NPLANT','LAI_CO']
+    cohort_fmean_vars = [
+                   'FMEAN_GPP_CO','FMEAN_NPP_CO','FMEAN_PLRESP_CO',
+                   'FMEAN_LEAF_RESP_CO','FMEAN_STEM_RESP_CO','FMEAN_ROOT_RESP_CO',
+                   'FMEAN_LEAF_TEMP_CO','FMEAN_LEAF_VPDEF_CO','FMEAN_LEAF_GSW_CO',
+                   'FMEAN_LINT_CO2_CO','FMEAN_A_NET_CO',
+                   'FMEAN_TRANSP_CO','FMEAN_WFLUX_WL_CO',
+                   'FMEAN_LEAF_PSI_CO','FMEAN_WOOD_PSI_CO',
+                   'FMEAN_LIGHT_LEVEL_CO','FMEAN_LIGHT_CO']
+
+    # we save into two files, one for polygon and one for cohort
+    first_write = True
+
+    #------------------  Loop Over Years  ---------------------------------#
+    year_array = np.arange(output_yeara,output_yearz+1)
+    for iyear, year in enumerate(year_array):
+        #------------------  Loop Over Years  -----------------------------#
+        # loop over month
+        montha, monthz = 1, 12
+        if year == output_yeara:
+            montha = output_montha
+        if year == output_yearz:
+            monthz = output_monthz
+        month_array = np.arange(montha,monthz+1)
+
+
+        for month in month_array:
+            # Define/Clear the dict that stores output data
+            # we do this so that the memory does not explode
+
+            # first polygon level
+            output_polygon_dict={}
+            for var in col_list + polygon_fmean_vars:
+                # we initiate it as an empty array since we do not know how long it would be for
+                # cohort-level extractions
+                output_polygon_dict[var] = []
+
+            # second cohort level
+            output_cohort_dict={}
+            for var in col_list + cohort_vars + cohort_fmean_vars:
+                output_cohort_dict[var] = []
+
+
+            # loop over day
+            daya, dayz = monthrange(year,month)
+            daya = 1
+
+            if (year == output_yeara) and (month == output_montha):
+                daya = output_daya
+
+            if (year == output_yearz) and (month == output_monthz):
+                dayz = output_dayz
+
+            day_array = np.arange(daya,dayz+1)
+
+            for day in day_array:
+                # Get day of year
+                doy = datetime(year,month,day).timetuple().tm_yday
+
+                # loop over time of day
+                for itime, time_str in enumerate(output_time_list):
+
+                    data_fn = '{:s}-I-{:4d}-{:02d}-{:02d}-{:s}-g01.h5'.format(
+                        data_pf,year,month,day,time_str)
+
+                    if not os.path.isfile(data_fn):
+                        print('{:s} doest not exist!'.format(data_fn))
+                        # file does not exist
+                        # Just ignore the file
+                        continue
+
+                    h5in    = h5py.File(data_fn,'r')
+
+                    # first extract polygon vars
+                    exut.extract_polygon(h5in,output_polygon_dict,polygon_fmean_vars)
+                    # append time stamps
+                    output_polygon_dict['year']   += [year]
+                    output_polygon_dict['month']  += [month]
+                    output_polygon_dict['day']    += [day]
+                    output_polygon_dict['doy']    += [doy]
+                    output_polygon_dict['hour']   += [int(time_str[0:2])]
+                    output_polygon_dict['minute'] += [int(time_str[2:4])]
+                    output_polygon_dict['second'] += [int(time_str[4:6])]
+
+                    # second extract cohort vars
+                    # first get number of cohort
+                    cohort_num = len(h5in['DBH'][:])
+                    exut.extract_cohort(h5in,output_cohort_dict,cohort_vars + cohort_fmean_vars)
+                    # append time stamps 
+                    output_cohort_dict['year']   += ([year] * cohort_num)
+                    output_cohort_dict['month']  += ([month] * cohort_num)
+                    output_cohort_dict['day']    += ([day] * cohort_num)
+                    output_cohort_dict['doy']    += ([doy] * cohort_num)
+                    output_cohort_dict['hour']   += ([int(time_str[0:2])] * cohort_num)
+                    output_cohort_dict['minute'] += ([int(time_str[2:4])] * cohort_num)
+                    output_cohort_dict['second'] += ([int(time_str[4:6])] * cohort_num)
+                    h5in.close()
+
+            # save the extracted data to a dictionary
+            output_df = pd.DataFrame(data = output_polygon_dict)
+            output_fn = out_dir + out_pf + 'fmean_polygon.csv'
+            # if it is the first year overwrite
+            # otherwise append
+            if first_write:
+                output_df.to_csv(output_fn,index=False,mode='w',header=True)
+            else:
+                output_df.to_csv(output_fn,index=False,mode='a',header=False)
+
+            del output_df
+
+            output_df = pd.DataFrame(data = output_cohort_dict)
+            output_fn = out_dir + out_pf + 'fmean_cohort.csv'
+            # if it is the first year overwrite
+            # otherwise append
+            if first_write:
+                output_df.to_csv(output_fn,index=False,mode='w',header=True)
+            else:
+                output_df.to_csv(output_fn,index=False,mode='a',header=False)
+
+            del output_df
+
+            # by the time now, we have surely finished the first write so set first_write to False
+            first_write = False
+
+
+    return
+
+
 def extract_treering(
      data_pf : 'path and prefix of the ED2 data'
     ,out_dir : 'output director'

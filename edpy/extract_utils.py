@@ -121,6 +121,58 @@ def extract_avg(
 
     return
 
+def extract_polygon(
+     h5in : 'handle for .h5 file'
+    ,output_dict : 'dictionary to store output data'
+    ,voi : 'variables of interests at ecosystem level'
+    ):
+    '''
+        Read ecosystem level average output
+    '''
+
+    ################################################
+    for var_name in voi:
+        if var_name.split('_')[-1] == 'PY':
+            # this is polygon level variable, usually 1-D or 3-D (size-PFT-polygon)
+            # just take the sum
+            output_dict[var_name].append(np.nansum(h5in['{:s}'.format(var_name)][:]))
+        else:
+            #
+            print('''Only _PY output vars can be processed for now. Please add
+                  the format for {:s} in the code.'''.format(var_name))
+
+    return
+# TODO: use extract_polygon and extract_cohort consistently in high-level functions
+def extract_cohort(
+     h5in : 'handle for .h5 file'
+    ,output_dict : 'dictionary to store output data'
+    ,voi : 'variables of interests'):
+    '''
+        Read ecosystem level average output
+    '''
+    # we don't need to read additional information
+
+    ################################################
+    for var_name in voi:
+        if var_name in var_noco or var_name.split('_')[-1] == 'CO':
+            # this is cohort level variable 
+            if var_name in ['FMEAN_LIGHT_CO','DMEAN_LIGHT_CO','MMEAN_LIGHT_CO']:
+                # need to combine ATM_RSHORT_PY and LIGHT_LEVEL_CO
+                time_scale = var_name.split('_')[0]
+                rshort_max = np.array(h5in[time_scale + '_ATM_RSHORT_PY']).ravel()
+                output_data = np.array(h5in[time_scale + '_LIGHT_LEVEL_CO'][:])
+                output_dict[var_name] += (output_data * rshort_max).ravel().tolist()
+            else:
+                output_data = np.array(h5in[var_name][:])
+                output_dict[var_name] += output_data.ravel().tolist()
+
+        else:
+            #
+            print('''Only cohort level output vars can be processed for now. Please add
+                  the format for {:s} in the code.'''.format(var_name))
+
+    return
+
 def extract_qmean(
      h5in : 'handle for .h5 file'
     ,output_dict : 'dictionary to store output data'

@@ -81,3 +81,9 @@ edpy.extract_treering(
 edpy.extract_monthly_diurnal(pf_name,data_dir,sim_pf,1751,1,1751,12)
 # plot qmean
 edpy.plot_monthly_diurnal(data_dir,sim_pf,figure_dir)
+
+# extract fmean
+edpy.extract_fast(pf_name,data_dir,sim_pf,
+                  2000,1,1,2000,1,1,
+                  ["{:02d}0000".format(time) for time in np.arange(24)],
+                  include_cohort=True)
