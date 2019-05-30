@@ -727,7 +727,7 @@ def extract_fast(
                    'FMEAN_LINT_CO2_CO','FMEAN_A_NET_CO',
                    'FMEAN_TRANSP_CO','FMEAN_WFLUX_WL_CO',
                    'FMEAN_LEAF_PSI_CO','FMEAN_WOOD_PSI_CO',
-                   'FMEAN_LIGHT_LEVEL_CO','FMEAN_LIGHT_CO']
+                   'FMEAN_PAR_L_CO']
 
     # we save into two files, one for polygon and one for cohort
     first_write = True
