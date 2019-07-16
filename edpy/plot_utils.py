@@ -359,7 +359,6 @@ def forest_2d_profile(
     ax.set_ylim((0.,60.))
 
     # plot vertical profile of LAI
-    # use hite_size_list_fine but bin to every 5 meter
     size_list = hite_size_list_fine
     if pft_size_df is not None:
        pft_size_lai = np.zeros((len(size_list[1]),len(pft_list)))

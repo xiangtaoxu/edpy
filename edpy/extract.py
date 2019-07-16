@@ -52,23 +52,23 @@ def extract_annual(
     # some pft level variables
     output_annual_dict = {}
     for var in col_list:
-        output_annual_dict[var] = np.zeros((year_num,))
+        output_annual_dict[var] = []#np.zeros((year_num,))
 
     # PFT-size-specific vars
     for var in voi:
         for pft in pft_list:
             for isize, size_edge in enumerate(dbh_size_list[1]):
                 output_annual_dict['{:s}_PFT_{:d}_{:s}_{:d}'.format(var,pft,dbh_size_list[0],isize)] = \
-                            np.zeros((year_num,))
+                           []# np.zeros((year_num,))
             for isize, size_edge in enumerate(hite_size_list[1]):
                 output_annual_dict['{:s}_PFT_{:d}_{:s}_{:d}'.format(var,pft,hite_size_list[0],isize)] = \
-                            np.zeros((year_num,))
+                           []# np.zeros((year_num,))
 
     #------------------  Loop Over Years  ---------------------------------#
     for iyear, year in enumerate(year_array):
         #------------------  Loop Over Years  -----------------------------#
         # append time stamps
-        output_annual_dict['year'][iyear]  = year
+        output_annual_dict['year']  += [year]
 
         # read data
         data_fn = '{:s}-Y-{:4d}-00-00-000000-g01.h5'.format(
@@ -84,9 +84,9 @@ def extract_annual(
 
         # extract PFT size vars
         exut.extract_pft_size(h5in,output_annual_dict,
-                         voi,pft_list,dbh_size_list,iyear)
+                         voi,pft_list,dbh_size_list)
         exut.extract_pft_size(h5in,output_annual_dict,
-                         voi,pft_list,hite_size_list,iyear)
+                         voi,pft_list,hite_size_list)
 
         h5in.close()
 
@@ -126,17 +126,17 @@ def extract_annual(
 
     # PFT and Size vars
     for var in col_list:
-        output_pft_size_dict[var] = np.zeros((len(size_year_array),))
+        output_pft_size_dict[var] = [] # np.zeros((len(size_year_array),))
 
     for var in voi:
         for pft in pft_list:
             for isize, size_edge in enumerate(dbh_size_list_fine[1]):
                 output_pft_size_dict['{:s}_PFT_{:d}_{:s}_{:d}'.format(var,pft,dbh_size_list_fine[0],isize)] = \
-                        np.zeros((len(size_year_array),))
+                       []# np.zeros((len(size_year_array),))
 
             for isize, size_edge in enumerate(hite_size_list_fine[1]):
                 output_pft_size_dict['{:s}_PFT_{:d}_{:s}_{:d}'.format(var,pft,hite_size_list_fine[0],isize)] = \
-                        np.zeros((len(size_year_array),))
+                       []# np.zeros((len(size_year_array),))
 
 
     # we also need to extract individual information to plot
@@ -150,7 +150,7 @@ def extract_annual(
     for iyear, year in enumerate(size_year_array):
         #------------------  Loop Over Years  -----------------------------#
         # append time stamps
-        output_pft_size_dict['year'][iyear]  = year
+        output_pft_size_dict['year']  += [year]
 
         # read data
         data_fn = '{:s}-Y-{:4d}-00-00-000000-g01.h5'.format(
@@ -170,10 +170,10 @@ def extract_annual(
 
         # extract PFT-SIZE vars
         exut.extract_pft_size(h5in,output_pft_size_dict,
-                         voi,pft_list,dbh_size_list_fine,iyear)
+                         voi,pft_list,dbh_size_list_fine)
 
         exut.extract_pft_size(h5in,output_pft_size_dict,
-                         voi,pft_list,hite_size_list_fine,iyear)
+                         voi,pft_list,hite_size_list_fine)
 
         h5in.close()
 
@@ -321,19 +321,19 @@ def extract_monthly(
         # first monthly output with PFT data
         output_monthly_dict ={}
         for var in col_list + output_met_vars + output_flux_vars:
-            output_monthly_dict[var] = np.zeros((12,))
+            output_monthly_dict[var] = [] #np.zeros((12,))
 
         # PFT-specific vars
         for var in output_pft_vars:
             for pft in pft_list:
-                output_monthly_dict['{:s}_PFT_{:d}'.format(var,pft)] = np.zeros((12,))
+                output_monthly_dict['{:s}_PFT_{:d}'.format(var,pft)] = [] #np.zeros((12,))
 
         # size-specific vars
         for var in output_size_vars:
             for isize, size_edge in enumerate(dbh_size_list[1]):
-                output_monthly_dict['{:s}_{:s}_{:d}'.format(var,dbh_size_list[0],isize)] = np.zeros((12,))
+                output_monthly_dict['{:s}_{:s}_{:d}'.format(var,dbh_size_list[0],isize)] = [] #np.zeros((12,))
             for isize, size_edge in enumerate(hite_size_list[1]):
-                output_monthly_dict['{:s}_{:s}_{:d}'.format(var,hite_size_list[0],isize)] = np.zeros((12,))
+                output_monthly_dict['{:s}_{:s}_{:d}'.format(var,hite_size_list[0],isize)] = [] #np.zeros((12,))
 
 
         # loop over month
@@ -347,9 +347,9 @@ def extract_monthly(
 
         for month in month_array:
             # append time stamps
-            output_monthly_dict['year'][month-1]  = year
-            output_monthly_dict['month'][month-1] = month
-            output_monthly_dict['time'][month-1] = year + (month-0.5) / 12.
+            output_monthly_dict['year']  += [year]
+            output_monthly_dict['month'] += [month]
+            output_monthly_dict['time']  += [(year + (month-0.5) / 12.)]
 
             # read data
             data_fn = '{:s}-E-{:4d}-{:02d}-00-000000-g01.h5'.format(
@@ -365,26 +365,21 @@ def extract_monthly(
 
             # first extract avg vars
             voi_extract = output_met_vars + output_flux_vars
-            exut.extract_polygon(h5in,output_monthly_dict,voi_extract,month-1)
+            exut.extract_polygon(h5in,output_monthly_dict,voi_extract)
 
             # second extract PFT vars
             voi_extract = output_pft_vars
             exut.extract_pft(h5in,output_monthly_dict,
-                        voi_extract,pft_list,month-1)
+                        voi_extract,pft_list)
 
             # third extract size vars
             voi_extract = output_size_vars
             exut.extract_size(h5in,output_monthly_dict,
-                         voi_extract,dbh_size_list,month-1)
+                         voi_extract,dbh_size_list)
             exut.extract_size(h5in,output_monthly_dict,
-                         voi_extract,hite_size_list,month-1)
+                         voi_extract,hite_size_list)
             h5in.close()
 
-        # get rid of the zero entries
-        nonzero_mask = ~((output_monthly_dict['year'] == 0) & 
-                         (output_monthly_dict['month'] == 0))
-        for var in output_monthly_dict.keys():
-            output_monthly_dict[var] = output_monthly_dict[var][nonzero_mask]
         # save the extracted data to a dictionary
         csv_monthly_df = pd.DataFrame(data = output_monthly_dict)
         csv_monthly_fn = out_dir + out_pf + 'monthly.csv'
@@ -401,7 +396,7 @@ def extract_monthly(
     # census time scale
     # for each census we will extract
     # pft_size vars (at the end)
-    output_pft_size_vars = ['AGB','MMEAN_LAI','BA','NPLANT']
+    output_pft_size_vars = ['AGB','LAI','BA','NPLANT']
 
     # individual vars for plot (at the end)
     output_individual_dict = {}
@@ -433,22 +428,22 @@ def extract_monthly(
         # (1) pft_size and (2) individual for plot
         output_pft_size_dict ={}
         for var in col_list:
-            output_pft_size_dict[var] = np.zeros((1,))
+            output_pft_size_dict[var] = []
 
         # size-specific vars
         for var in output_pft_size_vars:
             for pft in pft_list:
-                for isize, size_edge in enumerate(dbh_size_list[1]):
+                for isize, size_edge in enumerate(dbh_size_list_fine[1]):
                     output_pft_size_dict['{:s}_PFT_{:d}_{:s}_{:d}'.format(
-                        var,pft,dbh_size_list[0],isize)] = np.zeros((1,))
-                for isize, size_edge in enumerate(hite_size_list[1]):
+                        var,pft,dbh_size_list[0],isize)] = []
+                for isize, size_edge in enumerate(hite_size_list_fine[1]):
                     output_pft_size_dict['{:s}_PFT_{:d}_{:s}_{:d}'.format(
-                        var,pft,hite_size_list[0],isize)] = np.zeros((1,))
+                        var,pft,hite_size_list[0],isize)] = []
 
         # append time stamps
-        output_pft_size_dict['year'][0]  = census_end
-        output_pft_size_dict['month'][0] = output_monthz
-        output_pft_size_dict['time'][0] = census_end + (output_monthz-0.5) / 12.
+        output_pft_size_dict['year']  += [census_end]
+        output_pft_size_dict['month'] += [output_monthz]
+        output_pft_size_dict['time']  += [census_end + (output_monthz-0.5) / 12.]
 
         # get individual file
         output_individual_dict ={}
@@ -494,9 +489,9 @@ def extract_monthly(
         h5in    = h5py.File(data_fn,'r')
         voi_extract = output_pft_size_vars
         exut.extract_pft_size(h5in,output_pft_size_dict,
-                         voi_extract,pft_list,dbh_size_list,0)
+                         voi_extract,pft_list,dbh_size_list_fine)
         exut.extract_pft_size(h5in,output_pft_size_dict,
-                         voi_extract,pft_list,hite_size_list,0)
+                         voi_extract,pft_list,hite_size_list_fine)
 
         # extract individual vars
         exut.extract_individual_for_plot(h5in,output_individual_dict,

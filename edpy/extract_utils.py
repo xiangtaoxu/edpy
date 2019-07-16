@@ -65,7 +65,6 @@ var_scale_an = ['AGB','BA','BLEAF',
 var_norm_an = ['LEAF_PSI','DMAX_LEAF_PSI','DMIN_LEAF_PSI',
                'WOOD_PSI','DMAX_WOOD_PSI','DMIN_WOOD_PSI',
                'FMEAN_LEAF_PSI','FMEAN_WOOD_PSI',
-               'GPP','TRANSP',
                'DMEAN_LINT_CO2',
                'MMEAN_DMAX_LEAF_PSI','MMEAN_DMIN_LEAF_PSI',
                'MMEAN_DMAX_WOOD_PSI','MMEAN_DMIN_WOOD_PSI',
@@ -95,9 +94,10 @@ hite_size_list_fine = ('H',np.arange(0.,50.+1.,5.))
 # Low level extracting functions
 ##################################################
 def extract_polygon(
-     h5in : 'handle for .h5 file'
-    ,output_dict : 'dictionary to store output data'
-    ,voi : 'variables of interests at ecosystem level'
+     h5in           :   'handle for .h5 file'
+    ,output_dict    :   'dictionary to store output data'
+    ,voi            :   'variables of interests at ecosystem level'
+    ,soil_layers    :   'index for the soil layers to extract, default to be top layer' = [-1]
     ):
     '''
         Read ecosystem level average output
@@ -109,6 +109,12 @@ def extract_polygon(
             # this is polygon level variable, usually 1-D or 3-D (size-PFT-polygon)
             # just take the sum
             output_dict[var_name].append(np.nansum(h5in['{:s}'.format(var_name)][:]))
+
+            # soil variable
+            if 'SOIL' in var_name.split('_'):
+                output_dict[var_name].append(np.nanmean(
+                    h5in['{:s}'.format(var_name)][:,soil_layers]))
+
         else:
             #
             print('''Only _PY output vars can be processed for now. Please add
@@ -184,42 +190,13 @@ def extract_qmean(
 
     return
 
-def extract_soil(
-     h5in : 'handle for .h5 file'
-    ,output_dict : 'dictionary to store output data'
-    ,voi_avg : 'variables of interests at ecosystem level'
-    ,output_idx : 'index for the output data'
-    ,soil_layers : 'index for the soil layers to extract, default to be top layer' = [-1]
-                ):
-    '''
-        Read ecosystem level average output
-    '''
-    # we don't need to read additional information
-    #AREA    = np.array(h5in['AREA'])
-    #PACO_ID = np.array(h5in['PACO_ID'])
-    #PACO_N  = np.array(h5in['PACO_N'])
-    #NPLANT  = np.array(h5in['NPLANT'])
-
-    ################################################
-    for var_name in voi_avg:
-        if var_name.split('_')[-1] == 'PY':
-            # this is polygon level variable, usually 1-D or 3-D (size-PFT-polygon)
-            # just take the sum
-            output_dict[var_name][output_idx] = np.nanmean(
-                h5in['{:s}'.format(var_name)][:,soil_layers])
-        else:
-            #
-            print('''Only _PY output vars can be processed for now. Please add
-                  the format for {:s} in the code.'''.format(var_name))
-
-    return
 
 def extract_pft(
      h5in : 'handle for .h5 file'
     ,output_dict : 'dictionary to store output data'
     ,voi_avg_pft : 'variables of interests per pft'
     ,pft_list : 'List of PFTs to include'
-    ,output_idx : 'index for the output data'):
+    ):
 
     AREA    = np.array(h5in['AREA'])
     PACO_ID = np.array(h5in['PACO_ID'])
@@ -266,9 +243,10 @@ def extract_pft(
         # loop over PFTs
         for ipft,pft in enumerate(pft_list):
             var_name = '{:s}_PFT_{:d}'.format(var,pft)
+            output_val = 0.
             if np.sum(pft_mask[ipft]) == 0:
                 # this PFT does not exist
-                output_dict[var_name][output_idx] = np.nan
+                output_dict[var_name].append(np.nan)
                 continue
                 
             for ipa in np.arange(len(PACO_ID)):
@@ -285,19 +263,19 @@ def extract_pft(
                     # normalized by NPLANT * AREA
                     data_scaler = NPLANT[cohort_mask[ipa] & pft_mask[ipft]]\
                                 * AREA[ipa] / total_nplant_pft[ipft]
-                    
-                output_dict[var_name][output_idx] += \
+                output_val += \
                     np.nansum(tmp_data[cohort_mask[ipa] & pft_mask[ipft]] *
                               data_scaler)
 
+            output_dict[var_name] += [output_val]
     return
 
 def extract_size(
      h5in           : 'handle for .h5 file'
     ,output_dict    : 'dictionary to store output data'
     ,voi_size       : 'profile variables of interests'
-    ,size_list      : 'List of size classes to use' 
-    ,output_idx     : 'index for the output data'):
+    ,size_list      : 'List of size classes to use'
+    ):
 
     AREA    = np.array(h5in['AREA'])
     PACO_ID = np.array(h5in['PACO_ID'])
@@ -378,20 +356,6 @@ def extract_size(
 
         if var in var_cosum:
             tmp_data = np.sum(tmp_data,axis=1)
-#        elif var in ['MMEAN_iWUE']:
-#            # we need to derive the iWUE from GPP, LEAF_RESP, LAI and GSW
-#            gpp = np.array(h5in['MMEAN_GPP_CO'])
-#            leaf_resp = np.array(h5in['MMEAN_LEAF_RESP_CO'])
-#            gsw = np.array(h5in['MMEAN_LEAF_GSW_CO']) 
-#            lai = np.array(h5in['LAI_CO'])
-#            nplant = np.array(h5in['NPLANT'])
-#            tmp_data = ( (gpp - leaf_resp) # A_net kgC/pl/yr
-#                       * nplant / lai      # convert to kgC/m2leaf/yr
-#                       * 1000. / 12. * 1e6 # convert to umolC/m2leaf/yr
-#                       / (gsw * 1000. / 18. * 86400. * 365.) # molH2O/m2/yr
-#                       )
-#            # the resulting value is umolC/molH2O
-#            tmp_data[gsw == 0.] = np.nan
 
         # loop over size classes
         for isize,size_edge in enumerate(size_list[1]):
@@ -401,9 +365,10 @@ def extract_size(
 
             if np.sum(size_mask[isize]) == 0:
                 # No cohorts in this size class
-                output_dict[var_name][output_idx] = np.nan
+                output_dict[var_name].append(np.nan)
                 continue
 
+            output_val = 0.
             # loop over patches
             for ipa in np.arange(len(PACO_ID)):
                 # consider scaling or normalization
@@ -418,15 +383,12 @@ def extract_size(
                     # normalized by NPLANT * AREA
                     data_scaler = NPLANT[cohort_mask[ipa] & size_mask[isize]]\
                                 * AREA[ipa] / total_nplant_size[isize]
-                
-                #print(var_name,
-                #      output_idx,
-                #      np.nansum(tmp_data[cohort_mask[ipa] & size_mask[isize]] *
-                #               data_scaler),
-                #      output_dict[var_name][output_idx])
-                output_dict[var_name][output_idx] += \
+
+                output_val += \
                     np.nansum(tmp_data[cohort_mask[ipa] & size_mask[isize]] *
                               data_scaler)
+
+            output_dict[var_name] += [output_val]
 
     return
 
@@ -435,7 +397,6 @@ def extract_height_mass(
     ,output_dict    : 'dictionary to store output data'
     ,voi_size       : 'profile variables of interests'
     ,size_list      : 'List of size classes to use' 
-    ,output_idx     : 'index for the output data'
     ,agf_bs         : 'aboveground fraction' = 0.7
                         ):
     '''
@@ -523,6 +484,7 @@ def extract_height_mass(
         # loop over size classes
         for isize,size_edge in enumerate(size_list[1]):
             var_name = '{:s}_{:s}_{:d}'.format(var,size_list[0],isize)
+            output_val = 0.
 
             # these variables need to be weighted by AREA, NPLANT and relative fraction of
             # plant heights that are in the size group
@@ -571,9 +533,10 @@ def extract_height_mass(
                 # consider scaling or normalization
                 data_scaler = NPLANT[cohort_mask[ipa]]\
                             * AREA[ipa] * hite_scaler
-                output_dict[var_name][output_idx] += \
+                output_val += \
                     np.nansum(tmp_data[cohort_mask[ipa]] * data_scaler)
 
+            output_dict[var_name] += [output_val]
     return
 
 def extract_pft_size(
@@ -582,7 +545,7 @@ def extract_pft_size(
     ,voi_pft_size   : 'profile variables of interests per pft'
     ,pft_list       : 'List of PFTs to include'
     ,size_list      : 'List of size classes to use' 
-    ,output_idx     : 'index for the output data'):
+                    ):
 
     AREA    = np.array(h5in['AREA'])
     PACO_ID = np.array(h5in['PACO_ID'])
@@ -679,10 +642,10 @@ def extract_pft_size(
             # loop over sizes
             for isize, size_edge in enumerate(size_list[1]):
                 var_name = '{:s}_PFT_{:d}_{:s}_{:d}'.format(var,pft,size_list[0],isize)
-
+                output_val = 0.
                 if np.sum(size_mask[isize] & pft_mask[ipft]) == 0:
                     # No cohorts in this pft and size class
-                    output_dict[var_name][output_idx] = np.nan
+                    output_dict[var_name].append(np.nan)
                     continue
 
                 # loop over patches
@@ -703,11 +666,11 @@ def extract_pft_size(
                     else:
                         print(var)
                         print('ERROR! do not know how to normalize the variable')
-            
-                    output_dict[var_name][output_idx] += \
+                    output_val += \
                         np.nansum(tmp_data[cohort_mask[ipa] & pft_mask[ipft] &
                                           size_mask[isize]] * data_scaler)
 
+                output_dict[var_name] += [output_val]
     return
 
 
