@@ -411,7 +411,7 @@ def plot_annual(
             sub_pft_size_df = pft_size_df[pft_size_df['year'].values == year]
             plut.forest_2d_profile(ax,
                                    sub_individual_df,
-                                   pft_size_df,
+                                   sub_pft_size_df,
                                    pft_list,pft_names)
             ax.set_title('{:d}'.format(year))
             if iyear == 0:

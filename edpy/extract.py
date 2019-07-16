@@ -292,7 +292,7 @@ def extract_monthly(
 
 
     # first some polygon level data
-    # using extract_avg
+    # using extract_polygon
     output_met_vars = ['MMEAN_ATM_TEMP_PY','MMEAN_PCPG_PY','MMEAN_ATM_RSHORT_PY',
                        'MMEAN_ATM_VPDEF_PY','MMEAN_ATM_CO2_PY']
     output_flux_vars = ['MMEAN_GPP_PY','MMEAN_NPP_PY','MMEAN_LEAF_RESP_PY',
@@ -365,7 +365,7 @@ def extract_monthly(
 
             # first extract avg vars
             voi_extract = output_met_vars + output_flux_vars
-            exut.extract_avg(h5in,output_monthly_dict,voi_extract,month-1)
+            exut.extract_polygon(h5in,output_monthly_dict,voi_extract,month-1)
 
             # second extract PFT vars
             voi_extract = output_pft_vars
@@ -562,7 +562,7 @@ def extract_monthly_diurnal(
 
 
     # first some polygon level data
-    # using extract_avg
+    # using extract_polygon
     polygon_qmean_vars = ['QMEAN_ATM_TEMP_PY','QMEAN_ATM_VPDEF_PY','QMEAN_PCPG_PY',
                     'QMEAN_ATM_RSHORT_PY','QMEAN_ATM_PAR_PY','QMEAN_ATM_PAR_DIFF_PY',
                     'QMEAN_CAN_TEMP_PY','QMEAN_CAN_VPDEF_PY','QMEAN_CAN_CO2_PY',
@@ -707,7 +707,7 @@ def extract_fast(
 
 
     # first some polygon level data
-    # using extract_avg
+    # using extract_polygon
     polygon_fmean_vars = [
         'FMEAN_ATM_TEMP_PY','FMEAN_ATM_VPDEF_PY','FMEAN_ATM_RSHORT_PY',
         'FMEAN_CAN_TEMP_PY','FMEAN_CAN_VPDEF_PY','FMEAN_CAN_CO2_PY',

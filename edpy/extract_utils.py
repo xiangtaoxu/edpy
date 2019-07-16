@@ -94,33 +94,6 @@ hite_size_list_fine = ('H',np.arange(0.,50.+1.,5.))
 ##################################################
 # Low level extracting functions
 ##################################################
-def extract_avg(
-     h5in : 'handle for .h5 file'
-    ,output_dict : 'dictionary to store output data'
-    ,voi_avg : 'variables of interests at ecosystem level'
-    ,output_idx : 'index for the output data'):
-    '''
-        Read ecosystem level average output
-    '''
-    # we don't need to read additional information
-    #AREA    = np.array(h5in['AREA'])
-    #PACO_ID = np.array(h5in['PACO_ID'])
-    #PACO_N  = np.array(h5in['PACO_N'])
-    #NPLANT  = np.array(h5in['NPLANT'])
-
-    ################################################
-    for var_name in voi_avg:
-        if var_name.split('_')[-1] == 'PY':
-            # this is polygon level variable, usually 1-D or 3-D (size-PFT-polygon)
-            # just take the sum
-            output_dict[var_name][output_idx] = np.nansum(h5in['{:s}'.format(var_name)][:])
-        else:
-            #
-            print('''Only _PY output vars can be processed for now. Please add
-                  the format for {:s} in the code.'''.format(var_name))
-
-    return
-
 def extract_polygon(
      h5in : 'handle for .h5 file'
     ,output_dict : 'dictionary to store output data'
@@ -142,7 +115,7 @@ def extract_polygon(
                   the format for {:s} in the code.'''.format(var_name))
 
     return
-# TODO: use extract_polygon and extract_cohort consistently in high-level functions
+
 def extract_cohort(
      h5in : 'handle for .h5 file'
     ,output_dict : 'dictionary to store output data'
@@ -423,57 +396,6 @@ def extract_size(
         # loop over size classes
         for isize,size_edge in enumerate(size_list[1]):
 
-            # special cases for WOOD_WATER and WOOD_WATER_INT since we want to distribute it evenly
-            # across the height profile
-            if (size_list[0] == 'HTOP') and \
-               (var in ['WOOD_WATER','WOOD_WATER_INT',
-                       'FMEAN_WOOD_WATER','FMEAN_WOOD_WATER_INT',
-                       'DMEAN_WOOD_WATER','DMEAN_WOOD_WATER_INT',
-                       'MMEAN_WOOD_WATER','MMEAN_WOOD_WATER_INT']):
-
-                var_name = '{:s}_{:s}_{:d}'.format(var,size_list[0],isize)
-
-                # these variables need to be weighted by AREA, NPLANT and relative fraction of
-                # plant heights that are in the size group
-                # loop over patches
-                for ipa in np.arange(len(PACO_ID)):
-                    hmax = HITE[cohort_mask[ipa]][0]
-
-                    #  not the last one
-                    if isize+1 < len(size_list[1]):
-                        h_bot = hmax - size_list[1][isize+1]
-                    else:
-                        # last one
-                        h_bot = np.minimum(0.,hmax-size_list[1][isize])
-
-                    if h_bot < 0.:
-                        # unrealistic values
-                        # just continue to next patch
-                        continue
-
-
-                    # otherwise, calculate hite_scaler
-                    # first calculate the total height of this size bin
-                    # effectively equal to size_list[1][isize+1] -
-                    # size_list[0][isize] but with the control of hmax
-                    h_bin = np.maximum(0.,hmax - size_list[1][isize]) - h_bot
-
-                    # hite_scaler equal to the plant height that falls into this size_bin
-                    # which equals to max(0,min(h_bin,hite-h_bot))
-                    hite_scaler = (
-                        np.maximum(0.,np.minimum(h_bin,
-                        HITE[cohort_mask[ipa]]-h_bot)) / HITE[cohort_mask[ipa]]
-                    )
-
-                    # consider scaling or normalization
-                    data_scaler = NPLANT[cohort_mask[ipa]]\
-                                * AREA[ipa] * hite_scaler
-                
-                    output_dict[var_name][output_idx] += \
-                        np.nansum(tmp_data[cohort_mask[ipa]] * data_scaler)
-
-                # skip the default processing
-                continue
 
             var_name = '{:s}_{:s}_{:d}'.format(var,size_list[0],isize)
 
@@ -508,6 +430,151 @@ def extract_size(
 
     return
 
+def extract_height_mass(
+     h5in           : 'handle for .h5 file'
+    ,output_dict    : 'dictionary to store output data'
+    ,voi_size       : 'profile variables of interests'
+    ,size_list      : 'List of size classes to use' 
+    ,output_idx     : 'index for the output data'
+    ,agf_bs         : 'aboveground fraction' = 0.7
+                        ):
+    '''
+        # special case of extract_size
+        Only applies to variables includes wood mass
+        it will distribute the mass evenly across hite groups
+    '''
+    AREA    = np.array(h5in['AREA'])
+    PACO_ID = np.array(h5in['PACO_ID'])
+    PACO_N  = np.array(h5in['PACO_N'])
+    NPLANT  = np.array(h5in['NPLANT'])
+    if (size_list[0] == 'H'):
+        # use height to separate size classes
+        SIZE     = np.array(h5in['HITE'])
+    elif (size_list[0] == 'HTOP'):
+        # Use hite difference from top of the canopy as size classes
+        # first read HITE
+        HITE = np.array(h5in['HITE'])
+        SIZE = np.zeros_like(HITE)
+        # loop over each patch to calculate the hite difference from the tallest cohort
+        for ipa, paco_start in enumerate(PACO_ID):
+            pa_mask = ((np.arange(len(SIZE)) >= PACO_ID[ipa]-1) &
+                       (np.arange(len(SIZE)) < PACO_ID[ipa]+PACO_N[ipa]-1)
+                      )
+            SIZE[pa_mask] = (HITE[pa_mask][0] - HITE[pa_mask])
+
+    else:
+        print('''Error! Can not recognize size class identifier. Your identifier
+              is set as {:s}. Only H or HTOP is accepted for extract_height_mass'''.format(
+                  size_list[0]))
+        return
+
+    ###############################################
+    # generate arrays of masks for Patch and size classes
+    cohort_mask = []
+
+    for ipa in np.arange(len(PACO_ID)):
+        cohort_mask.append((np.arange(len(SIZE)) >= PACO_ID[ipa]-1) &
+                           (np.arange(len(SIZE)) < PACO_ID[ipa]+PACO_N[ipa]-1))
+
+    size_mask = []
+    # we also need the total nplant for normalization later
+    total_nplant_size = []
+    total_nplant = 0.
+    for isize, size_edge in enumerate(size_list[1]):
+        if (isize + 1) < len(size_list[1]):
+            # not the last one
+            data_mask = (SIZE >= size_edge) & (SIZE < size_list[1][isize+1])
+        else:
+            # last one
+            data_mask = (SIZE >= size_edge)
+
+        size_mask.append(data_mask)
+        patch_nplant = 0.
+        for ipa in np.arange(len(PACO_ID)):
+            patch_nplant += \
+                np.sum(NPLANT[cohort_mask[ipa] & size_mask[isize]] * AREA[ipa])
+
+        total_nplant_size.append(patch_nplant)
+        total_nplant += patch_nplant
+
+    ################################################
+
+    ################################################
+    for var in voi_size:
+        if (var not in 
+            ['WOOD_WATER','WOOD_WATER_INT',
+                'FMEAN_WOOD_WATER','FMEAN_WOOD_WATER_INT',
+                'DMEAN_WOOD_WATER','DMEAN_WOOD_WATER_INT',
+                'MMEAN_WOOD_WATER','MMEAN_WOOD_WATER_INT',
+                'BDEAD']):
+            print('Skip {:s}. Only process stem related variables.'.format(var))
+            continue
+
+
+        # read raw data
+        if var in var_noco:
+            tmp_data = np.array(h5in['{:s}'.format(var)])
+        else:
+            tmp_data = np.array(h5in['{:s}_CO'.format(var)])
+
+        if var in var_cosum:
+            tmp_data = np.sum(tmp_data,axis=1)
+
+        # loop over size classes
+        for isize,size_edge in enumerate(size_list[1]):
+            var_name = '{:s}_{:s}_{:d}'.format(var,size_list[0],isize)
+
+            # these variables need to be weighted by AREA, NPLANT and relative fraction of
+            # plant heights that are in the size group
+
+            # loop over patches
+            for ipa in np.arange(len(PACO_ID)):
+                hmax = HITE[cohort_mask[ipa]][0]
+
+                # calculate the hite_scaler
+                if size_list[0] == 'H':
+                    # using height to as size class
+                    # this is straight-forward
+                    h_bot = size_list[1][isize]
+
+                    if isize+1 < len(size_list[1]):
+                        h_top = size_list[1][isize+1]
+                    else:
+                        h_top = 999. # an unrealistically large value
+
+                elif size_list[1] == 'HTOP':
+                    # using height to top of canopy as size class
+                    # we need to calculate h_bot and h_top using hmax
+                    h_top = hmax - size_list[1][isize]
+
+                    if isize+1 < len(size_list[1]):
+                        h_bot = hmax - size_list[1][isize+1]
+                    else:
+                        # last one
+                        h_bot = np.minimum(0.,hmax-size_list[1][isize])
+
+                # now we have h_top and h_bot of this size class,
+                # we can calculate fraction of stem in this size class
+
+                if h_top < 0.:
+                    # unrealistic values
+                    # just continue to next patch
+                    continue
+
+
+                hite_scaler = (
+                    np.minimum(h_top - h_bot,
+                               HITE[cohort_mask[ipa]] - h_bot)
+                    / HITE[cohort_mask[ipa]]
+                              )
+
+                # consider scaling or normalization
+                data_scaler = NPLANT[cohort_mask[ipa]]\
+                            * AREA[ipa] * hite_scaler
+                output_dict[var_name][output_idx] += \
+                    np.nansum(tmp_data[cohort_mask[ipa]] * data_scaler)
+
+    return
 
 def extract_pft_size(
      h5in           : 'handle for .h5 file'
