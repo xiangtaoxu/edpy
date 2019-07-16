@@ -106,14 +106,16 @@ def extract_polygon(
     ################################################
     for var_name in voi:
         if var_name.split('_')[-1] == 'PY':
-            # this is polygon level variable, usually 1-D or 3-D (size-PFT-polygon)
-            # just take the sum
-            output_dict[var_name].append(np.nansum(h5in['{:s}'.format(var_name)][:]))
 
             # soil variable
             if 'SOIL' in var_name.split('_'):
                 output_dict[var_name].append(np.nanmean(
-                    h5in['{:s}'.format(var_name)][:,soil_layers]))
+                    h5in['{:s}'.format(var_name)][:,soil_layers].ravel()))
+            else:
+                # other variable
+                # this is polygon level variable, usually 1-D or 3-D (size-PFT-polygon)
+                # just take the sum
+                output_dict[var_name].append(np.nansum(h5in['{:s}'.format(var_name)][:]))
 
         else:
             #
@@ -411,6 +413,7 @@ def extract_height_mass(
     if (size_list[0] == 'H'):
         # use height to separate size classes
         SIZE     = np.array(h5in['HITE'])
+        HITE     = np.array(h5in['HITE'])
     elif (size_list[0] == 'HTOP'):
         # Use hite difference from top of the canopy as size classes
         # first read HITE
@@ -491,7 +494,6 @@ def extract_height_mass(
 
             # loop over patches
             for ipa in np.arange(len(PACO_ID)):
-                hmax = HITE[cohort_mask[ipa]][0]
 
                 # calculate the hite_scaler
                 if size_list[0] == 'H':
@@ -504,9 +506,10 @@ def extract_height_mass(
                     else:
                         h_top = 999. # an unrealistically large value
 
-                elif size_list[1] == 'HTOP':
+                elif size_list[0] == 'HTOP':
                     # using height to top of canopy as size class
                     # we need to calculate h_bot and h_top using hmax
+                    hmax = HITE[cohort_mask[ipa]][0]
                     h_top = hmax - size_list[1][isize]
 
                     if isize+1 < len(size_list[1]):
