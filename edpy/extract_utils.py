@@ -48,17 +48,20 @@ individual_vars = ['year','DBH','HITE','CROWN_RADIUS','PFT','PATCH_AGE','X_COOR'
 # when scaling from cohort level to PFT/size-average/ecosystem level
 
 # first variables that only need to be scaled by patch area
-var_scale_a = ['LAI','MMEAN_LAI','NPLANT']
+var_scale_a = ['LAI','MMEAN_LAI','NPLANT',
+               'LEAF_WATER','FMEAN_LEAF_WATER','DMEAN_LEAF_WATER','QMEAN_LEAF_WATER','MMEAN_LEAF_WATER',
+               'WOOD_WATER','FMEAN_WOOD_WATER','DMEAN_WOOD_WATER','QMEAN_WOOD_WATER','MMEAN_WOOD_WATER'
+              ]
 
 # second variables need area and nplant
-var_scale_an = ['AGB','BA','BLEAF',
-                'LEAF_WATER','LEAF_WATER_INT','WOOD_WATER','WOOD_WATER_INT',
-                'MMEAN_LEAF_WATER','MMEAN_LEAF_WATER_INT',
-                'MMEAN_WOOD_WATER','MMEAN_WOOD_WATER_INT',
-                'DMEAN_LEAF_WATER','DMEAN_LEAF_WATER_INT',
-                'DMEAN_WOOD_WATER','DMEAN_WOOD_WATER_INT',
-                'FMEAN_LEAF_WATER','FMEAN_LEAF_WATER_INT',
-                'FMEAN_WOOD_WATER','FMEAN_WOOD_WATER_INT',
+var_scale_an = ['AGB','BA','BLEAF','BDEAD',
+                'LEAF_WATER_INT','WOOD_WATER_INT',
+                'MMEAN_LEAF_WATER_INT',
+                'MMEAN_WOOD_WATER_INT',
+                'DMEAN_LEAF_WATER_INT',
+                'DMEAN_WOOD_WATER_INT',
+                'FMEAN_LEAF_WATER_INT',
+                'FMEAN_WOOD_WATER_INT',
                 'MMEAN_GPP']
 
 # third variables need normalized by area * nplant
@@ -509,7 +512,7 @@ def extract_height_mass(
                 elif size_list[0] == 'HTOP':
                     # using height to top of canopy as size class
                     # we need to calculate h_bot and h_top using hmax
-                    hmax = HITE[cohort_mask[ipa]][0]
+                    hmax = np.nanmax(HITE[cohort_mask[ipa]])
                     h_top = hmax - size_list[1][isize]
 
                     if isize+1 < len(size_list[1]):
@@ -529,7 +532,8 @@ def extract_height_mass(
 
                 hite_scaler = (
                     np.minimum(h_top - h_bot,
-                               HITE[cohort_mask[ipa]] - h_bot)
+                               np.maximum(0.,
+                                          HITE[cohort_mask[ipa]] - h_bot))
                     / HITE[cohort_mask[ipa]]
                               )
 
