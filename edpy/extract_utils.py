@@ -568,7 +568,7 @@ def extract_size_cum_mass(
                 # last one
                 patch_data_mask = patch_SIZE >= patch_htop_list[isize]
 
-            data_mask[cohort_mask] = patch_data_mask
+            data_mask[cohort_mask[ipa]] = patch_data_mask
 
         size_mask.append(data_mask)
         patch_nplant = 0.
