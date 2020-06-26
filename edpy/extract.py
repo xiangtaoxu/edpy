@@ -850,8 +850,8 @@ def extract_treering(
     ,treering_yearz : 'year of the latest treering to track (or the year to tree coring)'
     ,last_month_of_year : 'the last month for a growth year' = 12
     ,pft_list : 'List of PFTs to include' = []
-    ,dbh_min        : 'the smallest tree to core [cm]' = 10.
-    ,hite_min       : 'the minimum hite of a cohort [m]' = 0.5
+    ,dbh_min        : 'the smallest tree to core [cm]' = 5.
+    ,hite_min       : 'the minimum hite of a cohort [m]' = 1.5
     ,voi_add     : 'additional variable of interests' = ['LINT_CO2']
     , include_all : 'whether track all the trees in history or just the trees survive at last census' = True
     ):
@@ -889,6 +889,7 @@ def extract_treering(
                 'PFT','NPLANT','PA_NUM']
     if 'LINT_CO2' in voi_add:
         col_list.append('LINT_CO2')
+        col_list.append('GPP')
 
     # create an output dictionary
     output_dict = {}
@@ -926,6 +927,9 @@ def extract_treering(
     # information of the past year
     # 3. If it is not the last month_of_year, match the cohorts that are tracked, save growth and
     # other information into a temporary structure
+
+
+    data_init_idx = -1
 
     #------------------  Loop Over Time   --------------------------------#
     for itime, year, month in zip(np.arange(len(year_list)),year_list,month_list):
@@ -1016,6 +1020,12 @@ def extract_treering(
             cur_cohort_ba[:,-1] = BA
             cur_cohort_hite[:,-1] = HITE
             cur_cohort_nplant[:,-1] = NPLANT
+            
+            cur_cohort_dbh[:,month-1] = DBH
+            cur_cohort_ddbh_dt[:,month-1] = DDBH_DT
+            cur_cohort_ba[:,month-1] = BA
+            cur_cohort_hite[:,month-1] = HITE
+            cur_cohort_nplant[:,month-1] = NPLANT
 
             if 'LINT_CO2' in voi_add:
                 cur_cohort_gpp = np.zeros((len(cur_cohort_flag),13))
@@ -1023,6 +1033,8 @@ def extract_treering(
 
                 cur_cohort_gpp[:,-1] = GPP
                 cur_cohort_lint_co2[:,-1] = LINT_CO2
+                cur_cohort_gpp[:,month-1] = GPP
+                cur_cohort_lint_co2[:,month-1] = LINT_CO2
 
         #-----------------------------------------------------------
         #-----------------------------------------------------------
@@ -1047,6 +1059,8 @@ def extract_treering(
             else:
                 cur_last_idx = cur_last_month - 1
 
+            ico_linked = np.zeros_like(DBH)
+            # record whether the current ico is linked or not
 
             for ico, dbh_end in enumerate(cur_cohort_dbh[:,cur_last_idx]):
                 if cur_cohort_flag[ico] == -1:
@@ -1054,7 +1068,7 @@ def extract_treering(
                     continue
 
                 # find the matching cohort
-                cur_ddbh_dt = cur_cohort_ddbh_dt[ico,cur_last_idx]/12.
+                cur_ddbh_dt = cur_cohort_ddbh_dt[ico,cur_last_idx] / 12.
                 dbh_mask = np.absolute(
                                 (dbh_end - cur_ddbh_dt) / DBH - 1.) < 1e-8
                 pft_mask = (PFT == cur_cohort_pft[ico])
@@ -1087,17 +1101,20 @@ def extract_treering(
                         cur_cohort_gpp[ico,month-1] = GPP[ico_match]
                         cur_cohort_lint_co2[ico,month-1] = LINT_CO2[ico_match]
 
-                elif (np.sum(pft_mask) > 1 and cur_cohort_hite[ico,cur_last_idx] > 2.):
+                    ico_linked[ico_match] = 1
+
+                elif (np.sum(pft_mask) > 1 and cur_cohort_hite[ico,cur_last_idx] > hite_min):
                     # the no match is due to cohort split/fusion
                     # find the cohort with the smallest difference
-                    ico_match_array = \
-                        np.arange(len(DBH))[pft_mask]
+                    ico_match_array = np.arange(len(DBH))[pft_mask]
 
                     ico_match_dbh = DBH[pft_mask]
 
+                    # ensure dbh_end - cur_ddbh_dt >= ico_match_dbh
+                    dbh_rel_diff = (dbh_end - cur_ddbh_dt) / ico_match_dbh - 1.
+                    dbh_rel_diff[dbh_rel_diff < 0.] = 999. # a very large value 
                     ico_match = ico_match_array[
-                        np.argmin(np.absolute(
-                            (dbh_end - cur_ddbh_dt) / ico_match_dbh - 1.))]
+                        np.argmin(np.absolute(dbh_rel_diff))]
 
                     cur_cohort_dbh[ico,month-1] = DBH[ico_match]
                     cur_cohort_ddbh_dt[ico,month-1] = DDBH_DT[ico_match]
@@ -1108,25 +1125,29 @@ def extract_treering(
                     if 'LINT_CO2' in voi_add:
                         cur_cohort_gpp[ico,month-1] = GPP[ico_match]
                         cur_cohort_lint_co2[ico,month-1] = LINT_CO2[ico_match]
+                    
+                    ico_linked[ico_match] = 1
 
                 else:
                     # truely no match or has reached the seedling stage
                     # set flag to -1
                     cur_cohort_flag[ico] = -1
 
-        #-----------------------------------------------------------
-        #-----------------------------------------------------------
 
-        
-        #-----------------------------------------------------------
-        # Process and save result every year
-        #-----------------------------------------------------------
-        if month == last_month_of_year and itime > 0:
-            # we have count one year and this is not the first month
-            # in this case, we need to save the annual metrics into output_dict
-            # and update temporary structures
-            # previous years
-            # save the previous information
+            # now we have linked the cohorts from the last month with the current month
+            
+            # we need to process and save result if it is the last mont of year
+            if (month != last_month_of_year):
+                # skip the rest of operations
+                continue
+
+
+
+            #-----------------------------------------------------------
+            # Process and save result at the end of year
+            #-----------------------------------------------------------
+
+            # first save
             for ico, cohort_id in enumerate(cur_cohort_id):
                 if cur_cohort_flag[ico] == -1:
                     # not tracked or has already reached hite_min
@@ -1172,95 +1193,254 @@ def extract_treering(
                                 np.nansum(cur_cohort_gpp[ico,month_idx])
                                                         )
 
-            # save the old cohort_id, cohort_flag
-            prev_cohort_id = cur_cohort_id.copy()
-            prev_cohort_flag = cur_cohort_flag.copy()
+                        output_dict['GPP'].append(np.nanmean(
+                                cur_cohort_gpp[ico,month_idx]
+                                ))
+            # second, create new cohort structures based on ico_linked
+            
+            # To do this, we first remove cohorts that are not tracked
+            tracked_mask = cur_cohort_flag >= 0
+            cur_cohort_id = cur_cohort_id[tracked_mask]
+            cur_cohort_flag = cur_cohort_flag[tracked_mask]
+            cur_cohort_pft = cur_cohort_pft[tracked_mask]
+            cur_cohort_pa = cur_cohort_pa[tracked_mask]
+            
+            # move the current month (last_month_of_year) value into -1
+            cur_cohort_dbh = cur_cohort_dbh[tracked_mask,:]
+            cur_cohort_dbh[:,-1] = cur_cohort_dbh[:,month-1]
+            cur_cohort_ddbh_dt = cur_cohort_ddbh_dt[tracked_mask,:]
+            cur_cohort_ddbh_dt[:,-1] = cur_cohort_ddbh_dt[:,month-1]
+            cur_cohort_hite = cur_cohort_hite[tracked_mask,:]
+            cur_cohort_hite[:,-1] = cur_cohort_hite[:,month-1]
+            cur_cohort_ba = cur_cohort_ba[tracked_mask,:]
+            cur_cohort_ba[:,-1] = cur_cohort_ba[:,month-1]
+            cur_cohort_nplant = cur_cohort_nplant[tracked_mask,:]
+            cur_cohort_nplant[:,-1] = cur_cohort_nplant[:,month-1]
+            if 'LINT_CO2' in voi_add:
+                cur_cohort_gpp = cur_cohort_gpp[tracked_mask,:]
+                cur_cohort_lint_co2 = cur_cohort_lint_co2[tracked_mask,:]
+            
+                cur_cohort_gpp[:,-1] = cur_cohort_gpp[:,month-1]
+                cur_cohort_lint_co2[:,-1] = cur_cohort_lint_co2[:,month-1]
 
-            # create new ones
-            cur_cohort_id = np.empty_like(DBH,dtype=object)
-            cur_cohort_flag = np.zeros_like(DBH)
 
-            # match the old ones
-            for ico, dbh in enumerate(DBH):
-                # find whehter we can find the same cohort in the last year
-                cohort_mask = (
-                    (np.absolute(cur_cohort_dbh[:,last_month_of_year-1] / DBH[ico] - 1.) < 1e-8) & # Same DBH
-                    (np.absolute(cur_cohort_ddbh_dt[:,last_month_of_year-1] - DDBH_DT[ico]) < 1e-8) & # Same Growth
-                    (np.absolute(cur_cohort_nplant[:,last_month_of_year-1] / NPLANT[ico] - 1.) < 0.1) & # Same Nplant
-                    (cur_cohort_pft == PFT[ico])  # Same PFT
-                )
-                patch_mask = (cur_cohort_pa == PA_NUM[ico])  # Same patch
 
-                # patch fusion can lead to changes in patch_number for the same cohort
-                # in this case cohort_mask == 0 but we still need to account for that
+            # Then, we add new cohorts that have not been linked to existing cohorts
+            new_cohort_mask = (ico_linked == 0.)
+            for ico, ipft in enumerate(PFT):
+                if ipft not in pft_list:
+                    # this pft should not be tracked
+                    new_cohort_mask[ico] = False
+            new_cohort_ico_list = np.arange(len(DBH))[new_cohort_mask]
 
-                if np.nansum(cohort_mask & patch_mask) == 1:
-                    ico_match = np.arange(len(prev_cohort_id))[cohort_mask][0]
-                    # there must only exist one cohort like this
-                    cur_cohort_id[ico] = prev_cohort_id[ico_match]
-                    cur_cohort_flag[ico] = prev_cohort_flag[ico_match]
+            new_cohort_id = np.empty_like(DBH[new_cohort_mask],dtype=object)
+            new_cohort_flag = np.zeros_like(new_cohort_id,dtype=float)
+            # fill in cohort_id and cohort_flag
+            for ico, idbh in enumerate(DBH[new_cohort_mask]):
+                ico_org = new_cohort_ico_list[ico]
+                if idbh >= dbh_min:
+                    # larger than dbh_min
+                    new_cohort_id[ico] = '{:04d}_{:04d}'.format(year,ico_org+1)
+                else:
+                    new_cohort_id[ico] = '{:04d}_{:04d}'.format(year,ico_org+1)
 
-                elif np.nansum(cohort_mask) == 1:
-                    ico_match = np.arange(len(prev_cohort_id))[cohort_mask][0]
-                    # there must only exist one cohort like this
-                    cur_cohort_id[ico] = prev_cohort_id[ico_match]
-                    cur_cohort_flag[ico] = prev_cohort_flag[ico_match]
-                    print('Unique match with patch fusion!')
 
-                elif np.nansum(cohort_mask) > 1:
-                    # TODO: modify the code to account for cohort split
-                    # there are multiple cohorts that are the same as the prev_cohort
-                    print('Mutliple Match!')
-                    # only copy the first one
-                    ico_match = np.arange(len(prev_cohort_id))[cohort_mask][0]
-                    # there must only exist one cohort like this
-                    cur_cohort_id[ico] = prev_cohort_id[ico_match]
-                    cur_cohort_flag[ico] = prev_cohort_flag[ico_match]
-
-                    # ignore the rest
-
-                elif np.nansum(cohort_mask) == 0:
-                    # patch does not match but there are matching cohorts
-                    # this can due to patch fusion
-
-                    # a new cohort
-                    if (len(pft_list) == 0 or PFT[ico] in pft_list):
-                        # if this pft is tracked
-                        if DBH[ico] >= dbh_min:
-                            # larger than dbh_min
-                            cur_cohort_flag[ico] = 1
-                            cur_cohort_id[ico] = '{:04d}_{:04d}'.format(year,ico+1)
-                        else:
-                            cur_cohort_flag[ico] = 0
-                            cur_cohort_id[ico] = '{:04d}_{:04d}'.format(year,ico+1)
-
-                    else:
-                        cur_cohort_flag[ico] = -1
-                        cur_cohort_id[ico] = '{:04d}_{:04d}'.format(year,0)
-
-            # create structures to temporarily store output information
-            # All information is recorded at the END of the month
-            cur_cohort_pft = PFT.copy()
-            cur_cohort_pa = PA_NUM.copy()
-            cur_cohort_dbh = np.zeros((len(cur_cohort_flag),13))
-            cur_cohort_ddbh_dt = np.zeros((len(cur_cohort_flag),13))
-            cur_cohort_ba = np.zeros((len(cur_cohort_flag),13))
-            cur_cohort_hite = np.zeros((len(cur_cohort_flag),13))
-            cur_cohort_nplant = np.zeros((len(cur_cohort_flag),13))
+            new_cohort_pft = PFT[new_cohort_mask]
+            new_cohort_pa = PA_NUM[new_cohort_mask]
+            new_cohort_dbh = np.zeros((len(new_cohort_flag),13))
+            new_cohort_ddbh_dt = np.zeros((len(new_cohort_flag),13))
+            new_cohort_ba = np.zeros((len(new_cohort_flag),13))
+            new_cohort_hite = np.zeros((len(new_cohort_flag),13))
+            new_cohort_nplant = np.zeros((len(new_cohort_flag),13))
 
             # initial conditions
-            cur_cohort_dbh[:,-1] = DBH
-            cur_cohort_ddbh_dt[:,-1] = DDBH_DT
-            cur_cohort_ba[:,-1] = BA
-            cur_cohort_hite[:,-1] = HITE
-            cur_cohort_nplant[:,-1] = NPLANT
+            new_cohort_dbh[:,-1] = DBH[new_cohort_mask]
+            new_cohort_ddbh_dt[:,-1] = DDBH_DT[new_cohort_mask]
+            new_cohort_ba[:,-1] = BA[new_cohort_mask]
+            new_cohort_hite[:,-1] = HITE[new_cohort_mask]
+            new_cohort_nplant[:,-1] = NPLANT[new_cohort_mask]
+
+
+
+            # now concatenate the cur_ and new_ data strcutures
+
+            cur_cohort_id = np.concatenate((cur_cohort_id,new_cohort_id))
+            cur_cohort_flag = np.concatenate((cur_cohort_flag,new_cohort_flag))
+            cur_cohort_pft = np.concatenate((cur_cohort_pft,new_cohort_pft))
+            cur_cohort_pa = np.concatenate((cur_cohort_pa,new_cohort_pa))
+            cur_cohort_dbh = np.concatenate((cur_cohort_dbh,new_cohort_dbh),axis=0)
+            cur_cohort_ddbh_dt = np.concatenate((cur_cohort_ddbh_dt,new_cohort_ddbh_dt),axis=0)
+            cur_cohort_ba = np.concatenate((cur_cohort_ba,new_cohort_ba),axis=0)
+            cur_cohort_hite = np.concatenate((cur_cohort_hite,new_cohort_hite),axis=0)
+            cur_cohort_nplant = np.concatenate((cur_cohort_nplant,new_cohort_nplant),axis=0)
 
             if 'LINT_CO2' in voi_add:
-                cur_cohort_gpp = np.zeros((len(cur_cohort_flag),13))
-                cur_cohort_lint_co2 = np.zeros((len(cur_cohort_flag),13))
+                new_cohort_gpp = np.zeros((len(new_cohort_flag),13))
+                new_cohort_lint_co2 = np.zeros((len(new_cohort_flag),13))
 
-                cur_cohort_gpp[:,-1] = GPP
-                cur_cohort_lint_co2[:,-1] = LINT_CO2
+                new_cohort_gpp[:,-1] = GPP[new_cohort_mask]
+                new_cohort_lint_co2[:,-1] = LINT_CO2[new_cohort_mask]
+            
+                cur_cohort_gpp = np.concatenate((cur_cohort_gpp,new_cohort_gpp),axis=0)
+                cur_cohort_lint_co2 = np.concatenate((cur_cohort_lint_co2,new_cohort_lint_co2),axis=0)
+
+            #-----------------------------------------------------------
+            #-----------------------------------------------------------
+
+        
+#        #-----------------------------------------------------------
+#        # Process and save result every year
+#        #-----------------------------------------------------------
+#        if month == last_month_of_year and itime > 0:
+#            # we have count one year and this is not the first month
+#            # in this case, we need to save the annual metrics into output_dict
+#            # and update temporary structures
+#            # previous years
+#            # save the previous information
+#            for ico, cohort_id in enumerate(cur_cohort_id):
+#                if cur_cohort_flag[ico] == -1:
+#                    # not tracked or has already reached hite_min
+#                    continue
+#                else:
+#                    # growth_end_year is always in the next year
+#                    output_dict['growth_end_year'].append(year+1)
+#                    output_dict['cohort_flag'].append(cur_cohort_flag[ico])
+#                    output_dict['cohort_id'].append(cur_cohort_id[ico])
+#                    output_dict['PFT'].append(cur_cohort_pft[ico])
+#                    output_dict['PA_NUM'].append(cur_cohort_pa[ico])
+#
+#                    # DBH at the end of the growth year
+#                    output_dict['DBH'].append(cur_cohort_dbh[ico,-1])
+#                    output_dict['DDBH_DT'].append(
+#                        (   cur_cohort_dbh[ico,-1]
+#                        -   cur_cohort_dbh[ico,last_month_of_year-1]
+#                        ))
+#                    output_dict['BA'].append(cur_cohort_ba[ico,-1])
+#                    output_dict['DBA_DT'].append(
+#                        (   cur_cohort_ba[ico,-1]
+#                        -   cur_cohort_ba[ico,last_month_of_year-1]
+#                        ))
+#                    output_dict['H'].append(cur_cohort_hite[ico,-1])
+#                    output_dict['DH_DT'].append(
+#                        (   cur_cohort_hite[ico,-1]
+#                        -   cur_cohort_hite[ico,last_month_of_year-1]
+#                        ))
+#                    output_dict['NPLANT'].append(cur_cohort_nplant[ico,-1])
+#
+#                    if 'LINT_CO2' in voi_add:
+#                        month_idx = np.arange(0,13).tolist().remove(last_month_of_year-1)
+#
+#                        if np.nanmean(cur_cohort_gpp[ico,month_idx]) == 0:
+#                            # no GPP at all
+#                            output_dict['LINT_CO2'].append(np.nanmean(
+#                                cur_cohort_lint_co2[ico,month_idx]
+#                            ))
+#                        else:
+#                            output_dict['LINT_CO2'].append(
+#                                np.nansum(cur_cohort_lint_co2[ico,month_idx]
+#                                            *cur_cohort_gpp[ico,month_idx]) /
+#                                np.nansum(cur_cohort_gpp[ico,month_idx])
+#                                                        )
+#
+#            # save the old cohort_id, cohort_flag
+#            prev_cohort_id = cur_cohort_id.copy()
+#            prev_cohort_flag = cur_cohort_flag.copy()
+#
+#            # create new ones
+#            cur_cohort_id = np.empty_like(DBH,dtype=object)
+#            cur_cohort_flag = np.zeros_like(DBH)
+#
+#            # match the old ones
+#            for ico, dbh in enumerate(DBH):
+#                # find whehter we can find the same cohort in the last year
+#                cohort_mask = (
+#                    (np.absolute(cur_cohort_dbh[:,last_month_of_year-1] / DBH[ico] - 1.) < 1e-8) & # Same DBH
+#                    (np.absolute(cur_cohort_ddbh_dt[:,last_month_of_year-1] - DDBH_DT[ico]) < 1e-8) & # Same Growth
+#                    (cur_cohort_pft == PFT[ico])  # Same PFT
+#                )
+#                patch_mask = (cur_cohort_pa == PA_NUM[ico])  # Same patch
+#
+#                #(np.absolute(cur_cohort_nplant[:,last_month_of_year-1] / NPLANT[ico] - 1.) < 0.1) & # Same Nplant
+#                # patch fusion can lead to changes in patch_number for the same cohort
+#                # in this case cohort_mask == 0 but we still need to account for that
+#
+#                if np.nansum(cohort_mask & patch_mask) == 1:
+#                    ico_match = np.arange(len(prev_cohort_id))[cohort_mask][0]
+#                    # there must only exist one cohort like this
+#                    cur_cohort_id[ico] = prev_cohort_id[ico_match]
+#                    cur_cohort_flag[ico] = prev_cohort_flag[ico_match]
+#
+#                elif np.nansum(cohort_mask) == 1:
+#                    ico_match = np.arange(len(prev_cohort_id))[cohort_mask][0]
+#                    # there must only exist one cohort like this
+#                    cur_cohort_id[ico] = prev_cohort_id[ico_match]
+#                    cur_cohort_flag[ico] = prev_cohort_flag[ico_match]
+#                    print('{:s} Unique match with patch fusion!'.format(
+#                            cur_cohort_id[ico]
+#                            ))
+#
+#                elif np.nansum(cohort_mask) > 1:
+#                    # TODO: modify the code to account for cohort split
+#                    # there are multiple cohorts that are the same as the prev_cohort
+#                    print('Mutliple Match!')
+#                    # only copy the first one
+#                    # find the one that has the closes NPLANT as the previous one
+#                    sub_icos = np.arange(len(prev_cohort_id))[cohort_mask]
+#                    sub_nplant = cur_cohort_nplant[cohort_mask,last_month_of_year-1]
+#                    ico_match = sub_icos[np.argmin(abs(sub_nplant - NPLANT[ico]))]
+#
+#                    #ico_match = np.arange(len(prev_cohort_id))[cohort_mask][0]
+#                    # there must only exist one cohort like this
+#                    cur_cohort_id[ico] = prev_cohort_id[ico_match]
+#                    cur_cohort_flag[ico] = prev_cohort_flag[ico_match]
+#
+#                    # ignore the rest
+#
+#                elif HITE[ico] > hite_min:
+#                    # No exact match in DBH and DDBH_DT but the current cohort is not a new one
+#                else:
+#                    # Absolutely No match
+#                    # patch does not match but there are matching cohorts
+#                    # this can due to patch fusion
+#
+#                    # a new cohort
+#                    if (len(pft_list) == 0 or PFT[ico] in pft_list):
+#                        # if this pft is tracked
+#                        if DBH[ico] >= dbh_min:
+#                            # larger than dbh_min
+#                            cur_cohort_flag[ico] = 1
+#                            cur_cohort_id[ico] = '{:04d}_{:04d}'.format(year,ico+1)
+#                        else:
+#                            cur_cohort_flag[ico] = 0
+#                            cur_cohort_id[ico] = '{:04d}_{:04d}'.format(year,ico+1)
+#
+#                    else:
+#                        cur_cohort_flag[ico] = -1
+#                        cur_cohort_id[ico] = '{:04d}_{:04d}'.format(year,0)
+#
+#            # create structures to temporarily store output information
+#            # All information is recorded at the END of the month
+#            cur_cohort_pft = PFT.copy()
+#            cur_cohort_pa = PA_NUM.copy()
+#            cur_cohort_dbh = np.zeros((len(cur_cohort_flag),13))
+#            cur_cohort_ddbh_dt = np.zeros((len(cur_cohort_flag),13))
+#            cur_cohort_ba = np.zeros((len(cur_cohort_flag),13))
+#            cur_cohort_hite = np.zeros((len(cur_cohort_flag),13))
+#            cur_cohort_nplant = np.zeros((len(cur_cohort_flag),13))
+#
+#            # initial conditions
+#            cur_cohort_dbh[:,-1] = DBH
+#            cur_cohort_ddbh_dt[:,-1] = DDBH_DT
+#            cur_cohort_ba[:,-1] = BA
+#            cur_cohort_hite[:,-1] = HITE
+#            cur_cohort_nplant[:,-1] = NPLANT
+#
+#            if 'LINT_CO2' in voi_add:
+#                cur_cohort_gpp = np.zeros((len(cur_cohort_flag),13))
+#                cur_cohort_lint_co2 = np.zeros((len(cur_cohort_flag),13))
+#
+#                cur_cohort_gpp[:,-1] = GPP
+#                cur_cohort_lint_co2[:,-1] = LINT_CO2
 
 
 
@@ -1277,10 +1457,10 @@ def extract_treering(
             csv_fn = out_dir + out_pf + 'treering.csv'
 
             if first_write:
-                csv_df.to_csv(csv_fn,index=False,mode='w',header=True)
+                csv_df.to_csv(csv_fn,index=False,mode='w',header=True,float_format='%.6g')
                 first_write = False
             else:
-                csv_df.to_csv(csv_fn,index=False,mode='a',header=False)
+                csv_df.to_csv(csv_fn,index=False,mode='a',header=False,float_format='%.6g')
 
             del csv_df
 
