@@ -1010,6 +1010,7 @@ def extract_treering(
             cur_cohort_nplant = np.zeros((len(cur_cohort_flag),13))
 
             # initial conditions
+
             cur_cohort_dbh[:,-1] = DBH
             cur_cohort_ddbh_dt[:,-1] = DDBH_DT
             cur_cohort_ba[:,-1] = BA
@@ -1057,6 +1058,8 @@ def extract_treering(
                 dbh_mask = np.absolute(
                                 (dbh_end - cur_ddbh_dt) / DBH - 1.) < 1e-8
                 pft_mask = (PFT == cur_cohort_pft[ico])
+
+                # patch number does not necessarily match
                 pa_mask  = (PA_NUM == cur_cohort_pa[ico])
 
                 if (np.sum(dbh_mask & pft_mask & pa_mask) >= 1):
@@ -1183,16 +1186,26 @@ def extract_treering(
                 cohort_mask = (
                     (np.absolute(cur_cohort_dbh[:,last_month_of_year-1] / DBH[ico] - 1.) < 1e-8) & # Same DBH
                     (np.absolute(cur_cohort_ddbh_dt[:,last_month_of_year-1] - DDBH_DT[ico]) < 1e-8) & # Same Growth
-                    (np.absolute(cur_cohort_nplant[:,last_month_of_year-1] / NPLANT[ico] - 1.) < 1e-8) & # Same Nplant
-                    (cur_cohort_pft == PFT[ico]) & # Same PFT
-                    (cur_cohort_pa == PA_NUM[ico])  # Same patch
+                    (np.absolute(cur_cohort_nplant[:,last_month_of_year-1] / NPLANT[ico] - 1.) < 0.1) & # Same Nplant
+                    (cur_cohort_pft == PFT[ico])  # Same PFT
                 )
+                patch_mask = (cur_cohort_pa == PA_NUM[ico])  # Same patch
 
-                if np.nansum(cohort_mask) == 1:
+                # patch fusion can lead to changes in patch_number for the same cohort
+                # in this case cohort_mask == 0 but we still need to account for that
+
+                if np.nansum(cohort_mask & patch_mask) == 1:
                     ico_match = np.arange(len(prev_cohort_id))[cohort_mask][0]
                     # there must only exist one cohort like this
                     cur_cohort_id[ico] = prev_cohort_id[ico_match]
                     cur_cohort_flag[ico] = prev_cohort_flag[ico_match]
+
+                elif np.nansum(cohort_mask) == 1:
+                    ico_match = np.arange(len(prev_cohort_id))[cohort_mask][0]
+                    # there must only exist one cohort like this
+                    cur_cohort_id[ico] = prev_cohort_id[ico_match]
+                    cur_cohort_flag[ico] = prev_cohort_flag[ico_match]
+                    print('Unique match with patch fusion!')
 
                 elif np.nansum(cohort_mask) > 1:
                     # TODO: modify the code to account for cohort split
@@ -1207,6 +1220,9 @@ def extract_treering(
                     # ignore the rest
 
                 elif np.nansum(cohort_mask) == 0:
+                    # patch does not match but there are matching cohorts
+                    # this can due to patch fusion
+
                     # a new cohort
                     if (len(pft_list) == 0 or PFT[ico] in pft_list):
                         # if this pft is tracked
