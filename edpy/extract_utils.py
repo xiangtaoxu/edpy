@@ -62,6 +62,8 @@ var_scale_an = ['AGB','BA','BLEAF','BDEAD',
                 'DMEAN_WOOD_WATER_INT',
                 'FMEAN_LEAF_WATER_INT',
                 'FMEAN_WOOD_WATER_INT',
+                'QMEAN_LEAF_WATER_INT',
+                'QMEAN_LEAF_WATER_INT'
                 'MMEAN_GPP']
 
 # third variables need normalized by area * nplant
@@ -301,6 +303,7 @@ def extract_size(
     ,output_dict    : 'dictionary to store output data'
     ,voi_size       : 'profile variables of interests'
     ,size_list      : 'List of size classes to use'
+    ,extract_patch  : 'Whether to extract patch level information (default is False)' = False
     ):
 
     AREA    = np.array(h5in['AREA'])
@@ -404,7 +407,11 @@ def extract_size(
 
             if np.sum(size_mask[isize]) == 0:
                 # No cohorts in this size class
-                output_dict[var_name].append(np.nan)
+                if extract_patch:
+                    for ipa in np.arange(len(PACO_ID)):
+                        output_dict[var_name].append(np.nan)
+                else:
+                    output_dict[var_name].append(np.nan)
                 continue
 
             output_val = 0.
@@ -430,11 +437,22 @@ def extract_size(
                                 * AREA[ipa] / total_ba_size[isize]
                                   )
 
-                output_val += \
-                    np.nansum(tmp_data[cohort_mask[ipa] & size_mask[isize]] *
+                if extract_patch:
+                    # no need to scale with AREA
+                    data_scaler /= AREA[ipa]
+                    output_val = np.nansum(
+                              tmp_data[cohort_mask[ipa] & size_mask[isize]]
+                            * data_scaler)
+                    output_dict[var_name] += [output_val]
+
+                else:
+                    # aggregate tmp_data to output_val
+                    output_val += \
+                        np.nansum(tmp_data[cohort_mask[ipa] & size_mask[isize]] *
                               data_scaler)
 
-            output_dict[var_name] += [output_val]
+            if not extract_patch:
+                output_dict[var_name] += [output_val]
 
     return
 
@@ -443,6 +461,7 @@ def extract_size_cum_mass(
     ,output_dict    : 'dictionary to store output data'
     ,voi_size       : 'profile variables of interests'
     ,size_list      : 'List of size classes to use'
+    ,extract_patch  : 'Whether to extract patch level information (default is False)' = False
     ,agf_bs         : 'aboveground fraction' = 0.7
     ):
 
@@ -608,7 +627,12 @@ def extract_size_cum_mass(
 
             if np.sum(size_mask[isize]) == 0:
                 # No cohorts in this size class
-                output_dict[var_name].append(np.nan)
+                if extract_patch:
+                    for ipa in np.arange(len(PACO_ID)):
+                        output_dict[var_name].append(np.nan)
+                else:
+                    output_dict[var_name].append(np.nan)
+                
                 continue
 
             output_val = 0.
@@ -644,6 +668,8 @@ def extract_size_cum_mass(
                     if h_top <= 0.:
                         # unrealistic values
                         # just continue to next patch
+                        if extract_patch:
+                            output_dict[var_name].append(np.nan)
                         continue
 
 
@@ -657,8 +683,18 @@ def extract_size_cum_mass(
                     # consider scaling or normalization
                     data_scaler = NPLANT[cohort_mask[ipa]]\
                                 * AREA[ipa] * hite_scaler
-                    output_val += \
-                        np.nansum(tmp_data[cohort_mask[ipa]] * data_scaler)
+
+
+                    if extract_patch:
+                        # no need to scale with AREA
+                        data_scaler /= AREA[ipa]
+                        output_val = np.nansum(
+                                  tmp_data[cohort_mask[ipa]]
+                             * data_scaler)
+                        output_dict[var_name] += [output_val]
+                    else:
+                        output_val += \
+                            np.nansum(tmp_data[cohort_mask[ipa]] * data_scaler)
 
                 else:
                     # other variables that do not need scaling by hite
@@ -682,20 +718,294 @@ def extract_size_cum_mass(
                                     * AREA[ipa] / total_ba_size[isize]
                                     )
 
-                    output_val += \
-                        np.nansum(tmp_data[cohort_mask[ipa] & size_mask[isize]] *
-                                data_scaler)
+                    if extract_patch:
+                        # no need to scale with AREA
+                        data_scaler /= AREA[ipa]
+                        output_val = np.nansum(
+                                  tmp_data[cohort_mask[ipa] & size_mask[isize]]
+                                * data_scaler)
+                        output_dict[var_name] += [output_val]
+                    else:
+                        output_val += \
+                            np.nansum(tmp_data[cohort_mask[ipa] & size_mask[isize]] *
+                                    data_scaler)
 
-            output_dict[var_name] += [output_val]
+            if not extract_patch:
+                output_dict[var_name] += [output_val]
 
     return
 
+def extract_size_cum_mass_qmean(
+     h5in           : 'handle for .h5 file'
+    ,output_dict    : 'dictionary to store output data'
+    ,voi_size       : 'profile variables of interests'
+    ,size_list      : 'List of size classes to use'
+    ,agf_bs         : 'aboveground fraction' = 0.7
+    ):
+    '''
+        Deal with QMEAN files
+    '''
+
+    AREA    = np.array(h5in['AREA'])
+    PACO_ID = np.array(h5in['PACO_ID'])
+    PACO_N  = np.array(h5in['PACO_N'])
+    NPLANT  = np.array(h5in['NPLANT'])
+    BA_CO  = np.array(h5in['BA_CO'])
+
+    if (size_list[0] == 'CTOP'):
+        # use cumulative biomass carbon from the top as size
+        HITE     = np.array(h5in['HITE'])
+        BLEAF    = np.array(h5in['BLEAF'])
+        BDEAD    = np.array(h5in['BDEAD'])
+
+        SIZE = np.zeros_like(HITE)
+        eqv_htop_size_list = []
+        # we convert size_list to equivalent htop values for each patch
+        # then we can use the functionality described in extract_height_mass to calculate
+        # all the relevant variables
+
+        # loop over each patch to calculate the cumulative biomass for each cohort
+        for ipa, paco_start in enumerate(PACO_ID):
+            pa_mask = ((np.arange(len(SIZE)) >= PACO_ID[ipa]-1) &
+                       (np.arange(len(SIZE)) < PACO_ID[ipa]+PACO_N[ipa]-1)
+                      )
+            SIZE[pa_mask] = (HITE[pa_mask][0] - HITE[pa_mask])
+
+            eqv_htop_size_list_pa = np.zeros((len(size_list[1]),),dtype=float)
+
+            pa_hite = HITE[pa_mask]
+            pa_bleaf = BLEAF[pa_mask] * NPLANT[pa_mask]
+            pa_bdead = BDEAD[pa_mask] * NPLANT[pa_mask] * agf_bs
+            pa_bleaf_cum = np.zeros_like(pa_bleaf)
+            pa_bdead_cum = np.zeros_like(pa_bdead)
+
+            for ico, hite in enumerate(pa_hite):
+                # for a cohort with a given hite
+                # calculate biomass above this cohort
+                # first find all the cohorts that are taller than this one
+                taller_cohorts = pa_hite > hite
+                # include all BLEAF from these taller_cohorts
+                pa_bleaf_cum[ico] = np.sum(pa_bleaf[taller_cohorts])
+                # include BDEAD modified by agf_bs and hite above current hite
+                pa_bdead_cum[ico] = (
+                    np.sum(pa_bdead[taller_cohorts] * (1. -  hite /
+                                                                pa_hite[taller_cohorts]))
+                )
+            
+            pa_agb_cum = pa_bleaf_cum + pa_bdead_cum
+
+            # loop over size_list
+            for isize, size_edge in enumerate(size_list[1]):
+                if np.sum(pa_agb_cum <= size_edge) == 0:
+                    eqv_htop_size_list_pa[isize] = 0.
+                    continue
+
+                # find the last one where pa_agb_cum <= size_edge
+                ico = np.where(pa_agb_cum <= size_edge)[0][-1]
+
+                # check the difference between pa_agb_cum and size_edge
+                carbon_diff = size_edge - pa_agb_cum[ico]
+                
+                if carbon_diff <= pa_bleaf[ico]:
+                    # just including the leaf biomass of cohort ico
+                    # can cover the difference in carbon density
+                    # This value is generally small,
+                    # we just ignore the difference
+                    target_htop = np.amax(pa_hite) - pa_hite[ico]
+                else:
+                    # we need to incude some additional wood biomass
+                    cur_htop = np.amax(pa_hite) - pa_hite[ico]
+                    taller_cohorts_inclusive = pa_hite >= hite
+                    htop_increment = (
+                        (carbon_diff - pa_bleaf[ico]) / 
+                        np.sum(pa_bdead[taller_cohorts_inclusive] / pa_hite[taller_cohorts_inclusive])
+                    )
+                    target_htop = cur_htop + htop_increment
+                
+                eqv_htop_size_list_pa[isize] = target_htop
+            eqv_htop_size_list.append(eqv_htop_size_list_pa)
+
+
+       
+    else:
+        print('''Error! Can not recognize size class identifier. Your identifier
+              is set as {:s}. Only CTOP is accepted'''.format(size_list[0]))
+        return
+
+    ###############################################
+    # generate arrays of masks for Patch and size classes
+    # Note that for each cohort size_list would be different
+    cohort_mask = []
+
+    for ipa in np.arange(len(PACO_ID)):
+        cohort_mask.append((np.arange(len(SIZE)) >= PACO_ID[ipa]-1) &
+                           (np.arange(len(SIZE)) < PACO_ID[ipa]+PACO_N[ipa]-1))
+
+    size_mask = []
+    # we also need the total nplant for normalization later
+    total_nplant_size = []
+    total_nplant = 0.
+    
+    total_ba_size = []
+    total_ba = 0.
+    for isize, size_edge in enumerate(size_list[1]):
+        # we need to loop over patches again here because for each patch
+        # the equivalent htop size class would be different
+
+        # initialize data_mask as all false
+        data_mask = (SIZE < 0.)
+
+        for ipa in np.arange(len(PACO_ID)):
+            patch_htop_list = eqv_htop_size_list[ipa]
+            patch_SIZE = SIZE[cohort_mask[ipa]]
+
+
+            if (isize + 1) < len(patch_htop_list):
+                # not the last one
+                patch_data_mask = ( (patch_SIZE >= patch_htop_list[isize]) 
+                                  & (patch_SIZE < patch_htop_list[isize+1]))
+            else:
+                # last one
+                patch_data_mask = patch_SIZE >= patch_htop_list[isize]
+
+            data_mask[cohort_mask[ipa]] = patch_data_mask
+
+        size_mask.append(data_mask)
+        patch_nplant = 0.
+        patch_ba = 0.
+
+        for ipa in np.arange(len(PACO_ID)):
+            patch_nplant += \
+                np.sum(NPLANT[cohort_mask[ipa] & size_mask[isize]] * AREA[ipa])
+            
+            patch_ba += \
+                np.sum(BA_CO[cohort_mask[ipa] & size_mask[isize]] *
+                       NPLANT[cohort_mask[ipa] & size_mask[isize]] * AREA[ipa])
+
+        total_nplant_size.append(patch_nplant)
+        total_nplant += patch_nplant
+
+        total_ba_size.append(patch_ba)
+        total_ba += patch_ba
+    ################################################
+
+    ################################################
+    for var in voi_size:
+        # read raw data
+        if var[0:5] != 'QMEAN':
+            print('''Error! Only QMEAN variables are accepted. Yours is {:s}'''.format(var))
+            return
+
+
+        if var in var_noco:
+            tmp_data = np.array(h5in['{:s}'.format(var)])
+        else:
+            tmp_data = np.array(h5in['{:s}_CO'.format(var)])
+
+
+        # get number of time point within a day
+        # usually is 24
+        day_data_num = tmp_data.shape[1]
+
+        # loop over size classes
+        for isize,size_edge in enumerate(size_list[1]):
+
+
+            var_name = '{:s}_{:s}_{:d}'.format(var,size_list[0],isize)
+
+            if np.sum(size_mask[isize]) == 0:
+                # No cohorts in this size class
+                for itime in np.arange(day_data_num):
+                    output_dict[var_name].append(np.nan)
+                
+                continue
+
+            # loop time of day
+            for itime in np.arange(day_data_num):
+                output_val = 0.
+                # loop over patches
+                for ipa in np.arange(len(PACO_ID)):
+                    if (var in 
+                            ['QMEAN_WOOD_WATER','QMEAN_WOOD_WATER_INT',
+                            'BDEAD']):
+                        # wood-related variables that need to be scaled by 
+                        # height within the size group
+
+                        hmax = np.nanmax(HITE[cohort_mask[ipa]])
+                        patch_htop_list = eqv_htop_size_list[ipa]
+
+                        # using height to top of canopy as size class
+                        # we need to calculate h_bot and h_top using hmax
+                        # both of them should be larger than 0.
+
+                        h_top = np.maximum(0.,hmax - patch_htop_list[isize])
+
+                        if isize+1 < len(patch_htop_list):
+                            h_bot = np.maximum(0.,hmax - patch_htop_list[isize+1])
+                        else:
+                            # last one should be the ground
+                            h_bot = 0.
+
+                        # now we have h_top and h_bot of this size class,
+                        # we can calculate fraction of stem in this size class
+
+                        if h_top <= 0.:
+                            # unrealistic values
+                            # just continue to next patch
+                            continue
+
+
+                        hite_scaler = (
+                            np.minimum(h_top - h_bot,
+                                    np.maximum(0.,
+                                                HITE[cohort_mask[ipa]] - h_bot))
+                            / HITE[cohort_mask[ipa]]
+                                    )
+
+                        # consider scaling or normalization
+                        data_scaler = NPLANT[cohort_mask[ipa]]\
+                                    * AREA[ipa] * hite_scaler
+
+
+                        output_val += \
+                            np.nansum(tmp_data[cohort_mask[ipa],itime] * data_scaler)
+
+                    else:
+                        # other variables that do not need scaling by hite
+                        # consider scaling or normalization
+                        if var in var_scale_a:
+                            # scale by area only
+                            data_scaler = AREA[ipa]
+                        elif var in var_scale_an:
+                            # scale by NPLANT and AREA
+                            data_scaler = NPLANT[cohort_mask[ipa] & size_mask[isize]]\
+                                        * AREA[ipa]
+                        elif var in var_norm_an:
+                            # normalized by NPLANT * AREA
+                            data_scaler = NPLANT[cohort_mask[ipa] & size_mask[isize]]\
+                                        * AREA[ipa] / total_nplant_size[isize]
+                        elif var in var_norm_ban:
+                            # normalized by BA * NPLANT * AREA
+                            data_scaler = (
+                                BA_CO[cohort_mask[ipa] & size_mask[isize]] *
+                                NPLANT[cohort_mask[ipa] & size_mask[isize]]\
+                                        * AREA[ipa] / total_ba_size[isize]
+                                        )
+
+                        output_val += \
+                            np.nansum(tmp_data[cohort_mask[ipa] & size_mask[isize],itime] *
+                                    data_scaler)
+
+                output_dict[var_name] += [output_val]
+
+    return
 
 def extract_height_mass(
      h5in           : 'handle for .h5 file'
     ,output_dict    : 'dictionary to store output data'
     ,voi_size       : 'profile variables of interests'
     ,size_list      : 'List of size classes to use' 
+    ,extract_patch  : 'Whether to extract patch level information (default is False)' = False
     ,agf_bs         : 'aboveground fraction' = 0.7
                         ):
     '''
@@ -885,6 +1195,8 @@ def extract_height_mass(
                 if h_top <= 0.:
                     # unrealistic values
                     # just continue to next patch
+                    if extract_patch:
+                        output_dict[var_name].append(np.nan)
                     continue
 
 
@@ -898,10 +1210,21 @@ def extract_height_mass(
                 # consider scaling or normalization
                 data_scaler = NPLANT[cohort_mask[ipa]]\
                             * AREA[ipa] * hite_scaler
-                output_val += \
-                    np.nansum(tmp_data[cohort_mask[ipa]] * data_scaler)
 
-            output_dict[var_name] += [output_val]
+
+                if extract_patch:
+                    # no need to scale with AREA
+                    data_scaler /= AREA[ipa]
+                    output_val = np.nansum(
+                                tmp_data[cohort_mask[ipa] ]
+                            * data_scaler)
+                    output_dict[var_name] += [output_val]
+                else:
+                    output_val += \
+                        np.nansum(tmp_data[cohort_mask[ipa]] * data_scaler)
+
+            if not extract_patch:
+                output_dict[var_name] += [output_val]
     return
 
 def extract_pft_size(
