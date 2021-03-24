@@ -5,7 +5,15 @@ import os
 import numpy as np
 from math import isinf
 import sys
-sys.path.append('/n/home10/xiangtao/git_repos/edpy/')
+file_path = os.path.abspath(__file__)
+
+#split by /
+path_list = file_path.split('/')
+
+# get the parent folder path
+edpy_path = '/'.join(path_list[0:-2])
+print(edpy_path)
+sys.path.append(edpy_path)
 import edpy as edpy
 import pandas as pd
 
@@ -19,7 +27,7 @@ h5in = h5py.File(fn_name,'r')
 
 hite_dict = {}
 htop_dict = {}
-var_list = ['LAI','MMEAN_DMIN_LEAF_PSI','MMEAN_DMAX_LEAF_PSI']
+var_list = ['MMEAN_LAI','MMEAN_DMIN_LEAF_PSI','MMEAN_DMAX_LEAF_PSI']
 hite_size_list = ('H',np.arange(0,50+1,5.))
 htop_size_list = ('HTOP',np.arange(0,50+1,5.))
 

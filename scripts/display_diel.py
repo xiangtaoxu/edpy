@@ -5,7 +5,17 @@ import os
 import numpy as np
 from math import isinf
 import sys
-sys.path.append('/n/home10/xiangtao/git_repos/edpy/')
+import sys
+file_path = os.path.abspath(__file__)
+
+#split by /
+path_list = file_path.split('/')
+
+# get the parent folder path
+edpy_path = '/'.join(path_list[0:-2])
+print(edpy_path)
+sys.path.append(edpy_path)
+
 import edpy as edpy
 import pandas as pd
 import statsmodels.api as sm
