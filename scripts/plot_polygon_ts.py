@@ -41,7 +41,7 @@ parser.add_argument('--montha','-ma',action='store',default=None,type=int)
 parser.add_argument('--monthz','-mz',action='store',default=None,type=int)
 
 # add argument to indicate which pfts are included
-parser.add_argument('--pft','-pft',action='store',default=[1,2,3,4],nargs='+')
+parser.add_argument('--pft','-pft',action='store',default=[],nargs='+',type=int)
 
 # Feel free to add more arguments here
 # e.g. output directory etc.
@@ -71,7 +71,8 @@ pft_indexes = [i-1 for i in args.pft]
 # First, create a list of files to extract and plot
 ###################################################
 data_path = Path(args.data_dir)
-file_list = np.array(sorted(list(data_path.glob(f'{args.prefix}*.h5'))))
+# only allow for qmean data
+file_list = np.array(sorted(list(data_path.glob(f'{args.prefix}-Q-*.h5'))))
 
 # modify file_list based on yeara, yearz, montha, monthz
 remove_indexes = []
