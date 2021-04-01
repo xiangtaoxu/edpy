@@ -69,6 +69,7 @@ var_scale_an = ['AGB','BA','BLEAF','BDEAD',
 # third variables need normalized by area * nplant
 var_norm_an = ['DMEAN_LINT_CO2',
                'FMEAN_LEAF_TEMP','MMEAN_LEAF_TEMP',
+               'QMEAN_LEAF_TEMP',
                'MMEAN_TRANSP','MMEAN_LINT_CO2',
                'DDBH_DT','DBA_DT','HITE',
                'MORT_RATE','MMEAN_MORT_RATE']
