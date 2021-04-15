@@ -108,6 +108,8 @@ var_noco = ['DBH','PFT','NPLANT','DDBH_DT','DBA_DT','HITE',
 
 # special wood-related variables that need to be distributed into different size classes
 var_wood = ['BDEADA','BSAPWOODA','MMEAN_BBARKA','QMEAN_WOOD_WATER_IM2']
+# WARNING! var_wood has to be a var_nplant or a var_area, not a normalized variable
+# otherwise the results would be problematic
 
 #-------------------------------------------------
 
@@ -590,45 +592,61 @@ def extract_profile_pft(
                 # scaling the variables
                 var_data *= np.reshape(np.repeat(scaler,dim2_len),var_data.shape)
                 
-               
+
+                # avoid loop over ico, and use cohort_mask instead
                 
+                # loop over the second dimension
+                for k in np.arange(dim2_len):
+                    
+                    if var in var_wood:
+                        # distribute mass
+                        # need to update all index of size dimension
+                        
+                        data_update_dim = (np.sum(cohort_mask),len(coord_size))
+                        
+                        coord_size_update = np.arange(len(coord_size))
+                        
+                        # multiply var_data[cohort_mask,k] with size_frac from with class
+                        # using np.repeat and reshape functionality
+                        data_update = (
+                              size_frac[cohort_mask,:]
+                            * np.reshape(
+                                np.repeat(
+                                     var_data[cohort_mask,k].squeeze()
+                                    ,len(coord_size)
+                                )
+                                , data_update_dim
+                              )
+                        )
+                        
+                        
+                        # we need to sum up the cohort dimension and get sum for each size class
+                        data_update = np.nansum(data_update,axis=0)
+                        
+                    else:
+                        # normal scenario
+                        # only need to update size class i
+                        coord_size_update = i
+                        data_update = np.nansum(var_data[cohort_mask,k],axis=0)
                 
-                
-                # loop over cohorts and save the variable
-                cohort_array = np.arange(len(AREA_co))[cohort_mask]
-                for ico in cohort_array:
-                    # loop over second dimension
-                    for k in np.arange(dim2_len):
-                        # now we need add var_data[ico,k] to ds[var]
-                        
-                        if var in var_wood:
-                            # distribute mass
-                            # need to update all index of size dimension
-                            coord_size_update = np.arange(len(coord_size))
-                            data_update = var_data[ico,k] * size_frac[ico,:]
-                        else:
-                            # normal scenario
-                            # only need to update size class i
-                            coord_size_update = i
-                            data_update = var_data[ico,k]
-                        
-                        
-                        # update ds[var]
-                        # use nan_to_num incase it is the first time to assign the value
-                        if dim2_len == 1:
-                            # second dimension has only a length of 1
-                            # effectively 1-dimensional
-                            ds[var][0,coord_size_update,j] =(
-                                  np.nan_to_num(ds[var][0,coord_size_update,j])
-                                + data_update
-                            )
-                            
-                        else:
-                            # true 2-dimensional
-                            ds[var][0,coord_size_update,j,k] =(
-                                  np.nan_to_num(ds[var][0,coord_size_update,j,k])
-                                + data_update
-                            )
+                    # update ds[var]
+                    # use nan_to_num incase it is the first time to assign the value
+                    if dim2_len == 1:
+                        # second dimension has only a length of 1
+                        # effectively 1-dimensional
+                        ds[var][0,coord_size_update,j] =(
+                              np.nan_to_num(ds[var][0,coord_size_update,j])
+                            + data_update
+                        )
+
+                    else:
+                        # true 2-dimensional
+                        ds[var][0,coord_size_update,j,k] =(
+                              np.nan_to_num(ds[var][0,coord_size_update,j,k])
+                            + data_update
+                        )
+
+
                             
         # -------------------------------------------------------------------------------------
     #########################################################################
