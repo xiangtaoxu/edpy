@@ -37,8 +37,8 @@ parser.add_argument('--prefix','-p',action='store',default='',type=str)
 # default is None
 parser.add_argument('--yeara','-ya',action='store',default=None,type=int)
 parser.add_argument('--yearz','-yz',action='store',default=None,type=int)
-parser.add_argument('--montha','-ma',action='store',default=None,type=int)
-parser.add_argument('--monthz','-mz',action='store',default=None,type=int)
+parser.add_argument('--montha','-ma',action='store',default=1,type=int)
+parser.add_argument('--monthz','-mz',action='store',default=12,type=int)
 
 # add argument to indicate which pfts are included
 parser.add_argument('--pft','-pft',action='store',default=[],nargs='+',type=int)
@@ -227,7 +227,7 @@ dataset_py = dataset_py.isel(pft=pft_indexes)
 # transpose dataset since time is most often used
 dataset_py = dataset_py.transpose('soil_layer','size','pft','hour','time')
 # save the dataset as a netcdf file
-output_fn = args.out_dir + args.prefix + '.nc'
+output_fn = args.out_dir + args.prefix + '_py.nc'
 dataset_py.to_netcdf(output_fn)
 ###################################################
 
