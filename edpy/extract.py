@@ -841,8 +841,522 @@ def extract_fast(
 
     return
 
-
 def extract_treering(
+     data_pf : 'path and prefix of the ED2 data'
+    ,out_dir : 'output director'
+    ,out_pf : 'output prefix'
+    ,treering_yeara : 'year of the earliest treering to track'
+    ,treering_yearz : 'year of the latest treering to track (or the year to tree coring)'
+    ,last_month_of_year : 'the last month for a growth year' = 12
+    ,pft_list : 'List of PFTs to include' = []
+    ,dbh_min        : 'the smallest tree to core [cm]' = 5.
+    ,hite_min       : 'the minimum hite of a cohort [m]' = 1.5
+    ,voi_add     : 'additional variable of interests' = ['LINT_CO2']
+    ):
+    '''
+       This function will mimic the actual tree coring in the fields but for
+       cohorts in ED2
+       (1) It will read the monthly output at the end of simulations
+       (2) It determins trees to track based on some size requirement
+       (3) For each cohort to track/core, extract the growth history as long as
+       possible. By default, the function will track DBH growth, Basal area
+       growth, DBH, Height, PFT, NPLANT, and inter-cellular CO2 (daytime)... The tracking is based on cohort id added to ED2.2 in Mar 2021
+
+       (4) write the final data into a csv file. The function appends the
+       processed info to the output file for every year to avoid execessive
+       memory usage
+    '''
+
+    # flag for file writing
+    first_write = True
+
+    if last_month_of_year == 12:
+        first_month_of_year = 1
+    else:
+        first_month_of_year = last_month_of_year + 1
+
+    # Necessary stamps
+    # growth_end_year: year in which growth accounting starts
+    # cohort_flag: 1 -> survived in treering_yearz with dbh > dbh_min
+    #              0 -> tracked but did not survived in treering_yearz
+    #             -1 -> not tracked in the tree coring algorithm or it has reached hite_min
+    # cohort_id: {year}_{cohort_#} -> year means the year of the last tree ring record in our
+    # simulation, cohort_# is the cohort_# in that year
+
+    col_list = ['growth_end_year','cohort_flag','cohort_id',
+                'DBH','DDBH_DT','BA','DBA_DT','H','DH_DT',
+                'PFT','NPLANT','PA_NUM','CURR_COID_GLOB']
+    if 'LINT_CO2' in voi_add:
+        col_list.append('LINT_CO2')
+        col_list.append('GPP')
+
+    # create an output dictionary
+    output_dict = {}
+    for col_name in col_list:
+        output_dict[col_name] = []
+
+    year_array = np.arange(treering_yearz,treering_yeara-1,-1)
+
+    # create a backward-counting year list and a month list to loop over
+    year_list = []
+    month_list = []
+    for iyear, year in enumerate(year_array):
+        if year == treering_yearz:
+            # last year
+            monthz = last_month_of_year
+        else:
+            monthz = 12
+
+        if year == treering_yeara:
+            montha = last_month_of_year
+        else:
+            montha = 1
+
+        # loop over months backward
+        for imonth, month in enumerate(np.arange(monthz,montha-1,-1)):
+            year_list.append(year)
+            month_list.append(month)
+
+    # total months to track
+    month_num = len(month_list)
+
+    # A brief description of the coring algorithm is listed as follows:
+    # 1. Loop over months backward (year_list and month_list)
+    # 2. If it is the last month_of_year, update cohorts_id (cohorts to track), save the tree ring
+    # information of the past year
+    # 3. If it is not the last month_of_year, match the cohorts that are tracked, save growth and
+    # other information into a temporary structure
+
+
+    data_init_idx = -1
+
+    #------------------  Loop Over Time   --------------------------------#
+    for itime, year, month in zip(np.arange(len(year_list)),year_list,month_list):
+
+        # -------------------------------------------------------------
+
+        # read data
+        mmean_fn = '{:s}-E-{:4d}-{:02d}-00-000000-g01.h5'.format(
+                data_pf,year,month)
+        qmean_fn = '{:s}-Q-{:4d}-{:02d}-00-000000-g01.h5'.format(
+                data_pf,year,month)
+
+        if os.path.isfile(mmean_fn):
+            # read mmean file
+            data_fn = mmean_fn
+        elif os.path.isfile(qmean_fn):
+            # read qmean file
+            data_fn = qmean_fn
+        else:
+            print(f'either {mmean_fn} or {qmean_fn} does not exist!')
+            # file does not exist
+            return -1
+
+        h5in    = h5py.File(data_fn,'r')
+        DBH      = np.array(h5in['DBH'])
+        DDBH_DT  = np.array(h5in['DDBH_DT'])
+        PFT      = np.array(h5in['PFT'])
+        HITE     = np.array(h5in['HITE'])
+        BA       = np.array(h5in['BA_CO'])
+        NPLANT   = np.array(h5in['NPLANT'])
+        # current and previous cohort ID in the model
+        CURR_COID_GLOB = np.array(h5in['CURR_COID_GLOB'],dtype=int)
+        PREV_COID_GLOB = np.array(h5in['PREV_COID_GLOB'],dtype=int)
+
+        if 'LINT_CO2' in voi_add:
+            # if track intercellular CO2
+            LINT_CO2 = np.array(h5in['MMEAN_LINT_CO2_CO'])  # ppm
+            GPP      = np.array(h5in['MMEAN_GPP_CO'])  # kgC/pl/yr
+
+        AREA           = np.array(h5in['AREA'])
+        PACO_ID        = np.array(h5in['PACO_ID'])
+        PACO_N         = np.array(h5in['PACO_N'])
+        h5in.close()
+
+        # create an array of patch number for each cohort
+        PA_NUM   = np.zeros_like(NPLANT)
+        for ico_pa in np.arange(len(PA_NUM)):
+            PA_NUM[ico_pa] = np.where(PACO_ID <= (ico_pa + 1))[0][-1]
+
+        # loop over patches to modify NPLANT with patch area
+        # generate arrays of masks for Patch
+        for ipa in np.arange(len(PACO_ID)):
+            cohort_mask = ((np.arange(len(NPLANT)) >= PACO_ID[ipa]-1) &
+                               (np.arange(len(NPLANT)) < PACO_ID[ipa]+PACO_N[ipa]-1))
+            NPLANT[cohort_mask] *= AREA[ipa]
+
+        
+        #-----------------------------------------------------------
+
+        
+        #-----------------------------------------------------------
+        # Initialization of temporary structures
+        #-----------------------------------------------------------
+        if itime == 0:
+            # the very first month
+            # no previous information
+            # create new structures
+
+            # record whether the cohort is tracked
+            cur_tracked = np.zeros_like(DBH,dtype=int)
+
+            # this is the id for post-processing
+            # not the same as the cohort id in the model
+            cur_id = np.empty_like(DBH,dtype=object)
+
+            # loop over cohort to update the flag
+            for ico in np.arange(len(DBH)):
+                if (len(pft_list) == 0 or PFT[ico] in pft_list):
+                    # if this pft is tracked
+                    if DBH[ico] >= dbh_min:
+                        # larger than dbh_min
+                        cur_tracked[ico] = 1
+                        cur_id[ico] = '{:04d}_{:04d}'.format(year,ico+1)
+                    else:
+                        # target PFT but too small
+                        cur_tracked[ico] = 0
+                        cur_id[ico] = '{:04d}_{:04d}'.format(year,ico+1)
+                else:
+                    # PFT not tracked
+                    cur_tracked[ico] = -1
+                    cur_id[ico] = '{:04d}_{:04d}'.format(year,0)
+
+            cur_pft = PFT.copy()
+            cur_pa = PA_NUM.copy()
+
+
+            # create tables to temporarily store output information
+            # for the tables, each row is a cohort, each column is a month of the year
+            # the last column 13 stored the last month of the year to facilitate tracking acoss
+            # years
+
+            # Note that All information is recorded at the END of the month
+            table_dbh = np.zeros((len(cur_tracked),13))
+            table_ddbh_dt = np.zeros((len(cur_tracked),13))
+            table_ba = np.zeros((len(cur_tracked),13))
+            table_hite = np.zeros((len(cur_tracked),13))
+            table_nplant = np.zeros((len(cur_tracked),13))
+
+            # for cohort tracking
+            table_curr_coid = np.zeros((len(cur_tracked),13),dtype=int)
+            table_prev_coid = np.zeros((len(cur_tracked),13),dtype=int)
+
+            # initial conditions
+            table_dbh[:,-1] = DBH
+            table_ba[:,-1] = BA
+            table_hite[:,-1] = HITE
+            table_nplant[:,-1] = NPLANT
+            
+            table_dbh[:,month-1] = DBH
+            table_ba[:,month-1] = BA
+            table_hite[:,month-1] = HITE
+            table_nplant[:,month-1] = NPLANT
+
+            table_curr_coid[:,-1] = CURR_COID_GLOB
+            table_curr_coid[:,month-1] = CURR_COID_GLOB
+            table_prev_coid[:,-1] = PREV_COID_GLOB
+            table_prev_coid[:,month-1] = PREV_COID_GLOB
+
+            if 'LINT_CO2' in voi_add:
+                table_gpp = np.zeros((len(cur_tracked),13))
+                table_lint_co2 = np.zeros((len(cur_tracked),13))
+
+                table_gpp[:,-1] = GPP
+                table_lint_co2[:,-1] = LINT_CO2
+
+                table_gpp[:,month-1] = GPP
+                table_lint_co2[:,month-1] = LINT_CO2
+
+        #-----------------------------------------------------------
+        #-----------------------------------------------------------
+
+        
+        #-----------------------------------------------------------
+        # Match cohort and fill the temporary structures
+        #-----------------------------------------------------------
+        if itime > 0:
+            # always need to do this except for the first month
+            if month == 12:
+                last_month = 1
+            else:
+                last_month = month + 1
+
+
+            # if last_month is the last_month_of_year
+            # actual data is stored as the last element
+
+            if last_month == last_month_of_year:
+                last_idx = -1
+            else:
+                last_idx = last_month - 1
+
+            newly_tracked = np.ones_like(DBH,dtype=int)
+            # record whether the current ico is a newly tracked
+            # or not, by default it is set to 1 (i.e. is newly tracked)
+
+            for ico, dbh_end in enumerate(table_dbh[:,last_idx]):
+                if cur_tracked[ico] == -1:
+                    # not tracked
+                    # skip
+                    continue
+
+                # find the matching cohort
+                # based on the curr_coid of the target cohort (ico)
+                # There are three scenarios
+
+                # (1) the same cohort exists between two months
+                #     curr_coid[ico,cur_last_idx] can be found in CURR_COID_GLOB
+                if table_curr_coid[ico,last_idx] in CURR_COID_GLOB:
+                    # we can find curr_coid
+                    # find the matching ico within the current month
+                    ico_match = np.argwhere(CURR_COID_GLOB == table_curr_coid[ico,last_idx])[0]
+
+                
+                # (2) the cohort experienced split or fusion and coid has changed
+                #     prev_coid[ico,cur_last_idx] can be found in CURR_COID_GLOB
+
+                elif table_prev_coid[ico,last_idx] in CURR_COID_GLOB:
+                    # we can find prev_coid
+                    ico_match = np.argwhere(CURR_COID_GLOB == table_prev_coid[ico,last_idx])[0]
+
+
+                # (3) we have reached the very first month of the cohort.
+                #     We can find either curr_coid or prev_coid in CURR_COID_GLOB
+
+                else:
+                    # reached the seedling stage, can't find the match
+                    ico_match = -1
+
+                    # stop tracking 
+                    cur_tracked[ico] = -1
+
+                    # no need to change newly tracked flag
+                    # no need to update information
+                    # skip the rest of the loop
+                    continue
+
+
+                # ----------------------------
+                # if the execution has reached here
+                # we must have found a matching cohort
+                # ----------------------------
+
+                # reset the newly tracked flag
+                newly_tracked[ico_match] = 0
+                
+                # update the cohort information matrix if ico_match is not -1
+                table_dbh[ico,month-1] = DBH[ico_match]
+                table_ba[ico,month-1] = BA[ico_match]
+                table_hite[ico,month-1] = HITE[ico_match]
+                table_nplant[ico,month-1] = NPLANT[ico_match]
+
+                table_curr_coid[ico,month-1] = CURR_COID_GLOB[ico_match]
+                table_prev_coid[ico,month-1] = PREV_COID_GLOB[ico_match]
+                
+                if 'LINT_CO2' in voi_add:
+                    table_gpp[ico,month-1] = GPP[ico_match]
+                    table_lint_co2[ico,month-1] = LINT_CO2[ico_match]
+
+           
+            # finished cohort matching
+
+            # we need to process and save result if it is the last mont of year
+            if (month != last_month_of_year):
+                # skip the rest of operations
+                continue
+
+
+
+            #-----------------------------------------------------------
+            # Process and save result at the end of year
+            #-----------------------------------------------------------
+
+            # first save
+            for ico, cohort_id in enumerate(cur_id):
+                if cur_tracked[ico] == -1:
+                    # not tracked or has already reached hite_min
+                    continue
+                else:
+                    # growth_end_year is always in the next year
+                    output_dict['growth_end_year'].append(year+1)
+                    output_dict['cohort_flag'].append(cur_tracked[ico])
+                    output_dict['cohort_id'].append(cur_id[ico])
+                    output_dict['PFT'].append(cur_pft[ico])
+                    output_dict['PA_NUM'].append(cur_pa[ico])
+
+                    # DBH at the end of the growth year
+                    output_dict['DBH'].append(table_dbh[ico,-1])
+                    output_dict['DDBH_DT'].append(
+                        (   table_dbh[ico,-1]
+                        -   table_dbh[ico,last_month_of_year-1]
+                        ))
+                    output_dict['BA'].append(table_ba[ico,-1])
+                    output_dict['DBA_DT'].append(
+                        (   table_ba[ico,-1]
+                        -   table_ba[ico,last_month_of_year-1]
+                        ))
+                    output_dict['H'].append(table_hite[ico,-1])
+                    output_dict['DH_DT'].append(
+                        (   table_hite[ico,-1]
+                        -   table_hite[ico,last_month_of_year-1]
+                        ))
+                    output_dict['NPLANT'].append(table_nplant[ico,-1])
+                    output_dict['CURR_COID_GLOB'].append(table_curr_coid[ico,-1])
+
+                    if 'LINT_CO2' in voi_add:
+                        month_idx = np.arange(0,13).tolist().remove(last_month_of_year-1)
+
+                        if np.nanmean(table_gpp[ico,month_idx]) == 0:
+                            # no GPP at all
+                            output_dict['LINT_CO2'].append(np.nanmean(
+                                table_lint_co2[ico,month_idx]
+                            ))
+                        else:
+                            output_dict['LINT_CO2'].append(
+                                np.nansum(table_lint_co2[ico,month_idx]
+                                            *table_gpp[ico,month_idx]) /
+                                np.nansum(table_gpp[ico,month_idx])
+                                                        )
+
+                        output_dict['GPP'].append(np.nanmean(
+                                table_gpp[ico,month_idx]
+                                ))
+
+            # 
+            # Second, create new cohort structures based on ico_linked
+            
+            # To do this, we first remove cohorts that are not tracked
+            tracked_mask = cur_tracked >= 0
+            cur_id = cur_id[tracked_mask]
+            cur_tracked = cur_tracked[tracked_mask]
+            cur_pft = cur_pft[tracked_mask]
+            cur_pa  = cur_pa[tracked_mask]
+            
+            # move the current month (last_month_of_year) value into -1
+            table_dbh = table_dbh[tracked_mask,:]
+            table_dbh[:,-1] = table_dbh[:,month-1]
+            table_hite = table_hite[tracked_mask,:]
+            table_hite[:,-1] = table_hite[:,month-1]
+            table_ba = table_ba[tracked_mask,:]
+            table_ba[:,-1] = table_ba[:,month-1]
+            table_nplant = table_nplant[tracked_mask,:]
+            table_nplant[:,-1] = table_nplant[:,month-1]
+
+            table_curr_coid = table_curr_coid[tracked_mask,:]
+            table_curr_coid[:,-1] = table_curr_coid[:,month-1]
+            table_prev_coid = table_prev_coid[tracked_mask,:]
+            table_prev_coid[:,-1] = table_prev_coid[:,month-1]
+
+            if 'LINT_CO2' in voi_add:
+                table_gpp = table_gpp[tracked_mask,:]
+                table_lint_co2 = table_lint_co2[tracked_mask,:]
+            
+                table_gpp[:,-1] = table_gpp[:,month-1]
+                table_lint_co2[:,-1] = table_lint_co2[:,month-1]
+
+
+
+            # Then, we add new cohorts that have not been linked to existing cohorts
+            new_cohort_mask = (newly_tracked == 1)
+            for ico, ipft in enumerate(PFT):
+                if ipft not in pft_list:
+                    # this pft should not be tracked
+                    new_cohort_mask[ico] = False
+
+            new_cohort_ico_list = np.arange(len(DBH))[new_cohort_mask]
+
+            new_id = np.empty_like(DBH[new_cohort_mask],dtype=object)
+
+            # new_tracked is always zero
+            new_tracked = np.zeros_like(new_id,dtype=int)
+
+            # fill in cohort_id and cohort_flag
+            for ico, idbh in enumerate(DBH[new_cohort_mask]):
+                ico_org = new_cohort_ico_list[ico]
+                if idbh >= dbh_min:
+                    # larger than dbh_min
+                    new_id[ico] = '{:04d}_{:04d}'.format(year,ico_org+1)
+                else:
+                    new_id[ico] = '{:04d}_{:04d}'.format(year,ico_org+1)
+
+            new_pft = PFT[new_cohort_mask].copy()
+            new_pa  = PA_NUM[new_cohort_mask].copy()
+
+            new_table_dbh = np.zeros((len(new_id),13))
+            new_table_ba = np.zeros((len(new_id),13))
+            new_table_hite = np.zeros((len(new_id),13))
+            new_table_nplant = np.zeros((len(new_id),13))
+            new_table_curr_coid = np.zeros((len(new_id),13))
+            new_table_prev_coid = np.zeros((len(new_id),13))
+
+            # initial conditions
+            new_table_dbh[:,-1] = DBH[new_cohort_mask]
+            new_table_ba[:,-1] = BA[new_cohort_mask]
+            new_table_hite[:,-1] = HITE[new_cohort_mask]
+            new_table_nplant[:,-1] = NPLANT[new_cohort_mask]
+            new_table_curr_coid[:,-1] = CURR_COID_GLOB[new_cohort_mask]
+            new_table_prev_coid[:,-1] = PREV_COID_GLOB[new_cohort_mask]
+
+            # now concatenate the cur_ and new_ data strcutures
+            cur_id = np.concatenate((cur_id,new_id))
+            cur_tracked = np.concatenate((cur_tracked,new_tracked))
+
+            cur_pft = np.concatenate((cur_pft,new_pft))
+            cur_pa = np.concatenate((cur_pa,new_pa))
+
+
+            table_dbh = np.concatenate((table_dbh,new_table_dbh),axis=0)
+            table_ba = np.concatenate((table_ba,new_table_ba),axis=0)
+            table_hite = np.concatenate((table_hite,new_table_hite),axis=0)
+            table_nplant = np.concatenate((table_nplant,new_table_nplant),axis=0)
+            table_curr_coid = np.concatenate((table_curr_coid,new_table_curr_coid),axis=0)
+            table_prev_coid = np.concatenate((table_prev_coid,new_table_prev_coid),axis=0)
+
+            if 'LINT_CO2' in voi_add:
+                new_table_gpp = np.zeros((len(new_id),13))
+                new_table_lint_co2 = np.zeros((len(new_id),13))
+
+                new_table_gpp[:,-1] = GPP[new_cohort_mask]
+                new_table_lint_co2[:,-1] = LINT_CO2[new_cohort_mask]
+            
+                table_gpp = np.concatenate((table_gpp,new_table_gpp),axis=0)
+                table_lint_co2 = np.concatenate((table_lint_co2,new_table_lint_co2),axis=0)
+
+            #-----------------------------------------------------------
+            #-----------------------------------------------------------
+
+        #-----------------------------------------------------------
+        #-----------------------------------------------------------
+
+
+        # output the data when necessary
+        if (month == last_month_of_year and 
+            (len(output_dict['cohort_id']) > 500 or itime == (len(month_list)-1))
+           ):
+            # when there are more than 500 entries or it is the last month to check
+            csv_df = pd.DataFrame(data = output_dict)[col_list]
+            csv_fn = out_dir + out_pf + 'treering.csv'
+
+            if first_write:
+                csv_df.to_csv(csv_fn,index=False,mode='w',header=True,float_format='%.6g')
+                first_write = False
+            else:
+                csv_df.to_csv(csv_fn,index=False,mode='a',header=False,float_format='%.6g')
+
+            del csv_df
+
+            # empty output_dict as well
+            del output_dict
+            output_dict = {}
+            for col_name in col_list:
+                output_dict[col_name] = []
+
+    print('='*80)
+    print('Finished all tree cores!\nExiting the fuction successfully')
+    return
+
+#
+def extract_treering_archive(
      data_pf : 'path and prefix of the ED2 data'
     ,out_dir : 'output director'
     ,out_pf : 'output prefix'
