@@ -31,6 +31,8 @@ parser.add_argument('--out_dir','-od',action='store',default='./',type=str)
 
 # add argument to store output prefix
 parser.add_argument('--prefix','-p',action='store',default='',type=str)
+# add argument to store type of output files by default is Q (monthly average diurnal cycles)
+parser.add_argument('--filetype','-ft',action='store',default='Q',type=str)
 
 # add argument to indicate the start and end year/month
 # default is None
@@ -74,18 +76,23 @@ if args.out_dir[-1] != '/':
 #-------------------------------------------------
 # 1.1 Variable Types
 #-------------------------------------------------
-var_area = ['QMEAN_LEAF_WATER','QMEAN_WOOD_WATER',
-            'QMEAN_INTERCEPTED_AL','QMEAN_INTERCEPTED_AW',
-            'QMEAN_SENSIBLE_LC','QMEAN_SENSIBLE_WC','QMEAN_TRANSP',
-            'QMEAN_LEAF_WATER_IM2','QMEAN_WOOD_WATER_IM2',
-            'NPLANT','MMEAN_LAI']
+var_area = [
+    'QMEAN_LEAF_WATER','QMEAN_WOOD_WATER','QMEAN_INTERCEPTED_AL','QMEAN_INTERCEPTED_AW',
+    'QMEAN_SENSIBLE_LC','QMEAN_SENSIBLE_WC','QMEAN_TRANSP','QMEAN_VAPOR_LC',
+    'QMEAN_LEAF_WATER_IM2','QMEAN_WOOD_WATER_IM2',
+    'FMEAN_LEAF_WATER','FMEAN_WOOD_WATER','FMEAN_INTERCEPTED_AL','FMEAN_INTERCEPTED_AW',
+    'FMEAN_SENSIBLE_LC','FMEAN_SENSIBLE_WC','FMEAN_TRANSP','FMEAN_VAPOR_LC',
+    'FMEAN_LEAF_WATER_IM2','FMEAN_WOOD_WATER_IM2',
+    'NPLANT','MMEAN_LAI','LAI']
 
 
 # these variables need to be scaled with area-weighted nplant
-var_nplant = ['QMEAN_GPP','QMEAN_NPP','QMEAN_LEAF_RESP','QMEAN_PLRESP',
-              'AGB','BA','MMEAN_BLEAF','MMEAN_BROOT','BDEADA','BDEADB',
-              'BSAPWOODA','BSAPWOODB','MMEAN_BBARKA','MMEAN_BBARKB',
-              'MMEAN_BSTORAGE']
+var_nplant = [
+    'QMEAN_GPP','QMEAN_NPP','QMEAN_LEAF_RESP','QMEAN_PLRESP',
+    'FMEAN_GPP','FMEAN_NPP','FMEAN_LEAF_RESP','FMEAN_PLRESP',
+    'AGB','BA','BLEAF','MMEAN_BLEAF','BROOT','MMEAN_BROOT',
+    'BDEADA','BDEADB', 'BSAPWOODA','BSAPWOODB','BSTORAGE',
+    'MMEAN_BBARKA','MMEAN_BBARKB','MMEAN_BSTORAGE']
 # all these variables have 4 dimensions except HITE and DBH
 
 # these variables need to be normalized by area-weighed plants
@@ -93,21 +100,27 @@ var_nplant_norm = ['DDBH_DT','MMEAN_MORT_RATE','HITE','DBH']
 # all these variables have 3 dimensions time, size, pft
 
 # these variables need to be normalized with area-eighted lai
-var_lai_norm = ['QMEAN_A_NET','QMEAN_LEAF_GBW','QMEAN_LEAF_GSW',
-                'QMEAN_LEAF_TEMP','QMEAN_LEAF_VPDEF']
+var_lai_norm = [
+    'QMEAN_A_NET','QMEAN_LEAF_GBW','QMEAN_LEAF_GSW','QMEAN_LEAF_TEMP','QMEAN_LEAF_VPDEF',
+    'FMEAN_A_NET','FMEAN_LEAF_GBW','FMEAN_LEAF_GSW','FMEAN_LEAF_TEMP','FMEAN_LEAF_VPDEF'
+]
 # all these have 4 dimensions
 
 # these variables need to be normalized with area-weighted ba
-var_ba_norm = ['QMEAN_LEAF_PSI','QMEAN_WOOD_PSI','QMEAN_WOOD_TEMP']
+var_ba_norm = ['QMEAN_LEAF_PSI','QMEAN_WOOD_PSI','QMEAN_WOOD_TEMP',
+               'FMEAN_LEAF_PSI','FMEAN_WOOD_PSI','FMEAN_WOOD_TEMP']
 # all these have 4 dimensions
 
 
 # Here we set arrays to record variables that do not need to followed by _CO
 var_noco = ['DBH','PFT','NPLANT','DDBH_DT','DBA_DT','HITE',
-            'BSAPWOODA','BSAPWOODB','BDEADA','BDEADB']
+            'BLEAF','BSTORAGE','BROOT',
+            'BSAPWOODA','BSAPWOODB','BDEADA','BDEADB',
+            'BBARKA','BBARKB']
 
 # special wood-related variables that need to be distributed into different size classes
-var_wood = ['BDEADA','BSAPWOODA','MMEAN_BBARKA','QMEAN_WOOD_WATER_IM2']
+var_wood = ['BDEADA','BSAPWOODA','BBARKA','MMEAN_BBARKA',
+            'QMEAN_WOOD_WATER_IM2','FMEAN_WOOD_WATER_IM2']
 # WARNING! var_wood has to be a var_nplant or a var_area, not a normalized variable
 # otherwise the results would be problematic
 
@@ -143,6 +156,7 @@ def extract_size_info(
      ds_in          : 'input xarray dataset that has all cohort-level data'
     ,size_list      : 'A list contains the edge of size bins'
     ,size_type      : 'type of calculating size classes'
+    ,file_type      : 'type of input file, I or Q'
 ):
     '''
         Return size_idx and size_hite
@@ -247,15 +261,28 @@ def extract_size_info(
     
         
         NPLANT    = ds_in['NPLANT'].values
-        BLEAF     = ds_in['MMEAN_BLEAF_CO'].values
         BDEADA    = ds_in['BDEADA'].values
         BSAPWOODA = ds_in['BSAPWOODA'].values
-        BBARKA    = ds_in['MMEAN_BBARKA_CO'].values
-        BSTORAGEA = ( ds_in['MMEAN_BSTORAGE_CO'].values 
-            * ds_in['BSAPWOODA'].values
-            / (ds_in['BSAPWOODA'].values +
-               ds_in['BSAPWOODB'].values)
-        )
+        
+        if (file_type in ['Q','E']):
+            # monthly files
+            BLEAF     = ds_in['MMEAN_BLEAF_CO'].values
+            BBARKA    = ds_in['MMEAN_BBARKA_CO'].values
+            BSTORAGEA = ( ds_in['MMEAN_BSTORAGE_CO'].values 
+                * ds_in['BSAPWOODA'].values
+                / (ds_in['BSAPWOODA'].values +
+                   ds_in['BSAPWOODB'].values)
+            )
+        elif file_type in ['I']:
+            # Fast time scale files
+            BLEAF     = ds_in['BLEAF'].values
+            BBARKA    = ds_in['BBARKA'].values
+            BSTORAGEA = ( ds_in['BSTORAGE'].values 
+                * ds_in['BSAPWOODA'].values
+                / (ds_in['BSAPWOODA'].values +
+                   ds_in['BSAPWOODB'].values)
+            )
+
         # scale by NPLANT (no need to scale by AREA because we only
         # compare within each patch)
         BSTEMA = (BDEADA + BSAPWOODA + BBARKA + BSTORAGEA) * NPLANT
@@ -413,6 +440,7 @@ def extract_size_info(
 def extract_profile_pft(
      ds_in          : 'input xarray dataset that has all cohort-level data'
     ,voi_list       : 'profile variables of interests'
+    ,file_type      : 'type of input file, Q, E or I'
     ,coord_time     : 'a list of time coordinate for xarray'
     ,coord_size     : 'a list of size coordinate for xarray'
     ,coord_pft      : 'a list of pft coordinate for xarray'
@@ -432,7 +460,7 @@ def extract_profile_pft(
     '''
     
     # first generate size_idx, and size_frac necessary for averaging size groups
-    size_idx, size_frac = extract_size_info(ds_in,coord_size,size_type)
+    size_idx, size_frac = extract_size_info(ds_in,coord_size,size_type,file_type)
     
     
     #########################################################################
@@ -456,7 +484,11 @@ def extract_profile_pft(
     PACO_N    = ds_in['PACO_N'].values
     NPLANT    = ds_in['NPLANT'].values
     BA        = ds_in['BA_CO'].values
-    MMEAN_LAI = ds_in['MMEAN_LAI_CO'].values
+    if file_type in ['Q','E']:
+        LAI       = ds_in['MMEAN_LAI_CO'].values
+    elif file_type in ['I']:
+        LAI       = ds_in['LAI_CO'].values
+        
     HITE      = ds_in['HITE'].values # used to distribute wood carbon/water
     
     # get AREA for each cohort
@@ -471,7 +503,7 @@ def extract_profile_pft(
     # calculate the other scaling variables weighted by AREA_co
     NPLANT_co = NPLANT * AREA_co
     BA_co = BA * NPLANT_co
-    MMEAN_LAI_co = MMEAN_LAI * AREA_co
+    LAI_co = LAI * AREA_co
     
     # calculate aboveground sapwood ration
     bsapwood_a_frac_co = (
@@ -536,8 +568,11 @@ def extract_profile_pft(
         
         
         # deal with special cases
-        if var in ['QMEAN_WOOD_WATER_IM2','QMEAN_WOOD_WATER_INT',
-                   'MMEAN_BSTORAGE']:
+        if var in [
+            'QMEAN_WOOD_WATER_IM2','QMEAN_WOOD_WATER_INT',
+            'FMEAN_WOOD_WATER_IM2','FMEAN_WOOD_WATER_INT',
+            'MMEAN_BSTORAGE','BSTORAGE'
+        ]:
             # these two variables records total wood water
             # we need to convert them to aboveground values
             
@@ -583,11 +618,11 @@ def extract_profile_pft(
                 elif var in var_ba_norm:
                     scaler[cohort_mask] = BA_co[cohort_mask] / np.sum(BA_co[cohort_mask])
                 elif var in var_lai_norm:
-                    if np.sum(MMEAN_LAI_co[cohort_mask]) == 0.:
+                    if np.sum(LAI_co[cohort_mask]) == 0.:
                         # in case LAI are all zero (e.g. in non-growing season)
-                        scaler[cohort_mask] = MMEAN_LAI_co[cohort_mask] * 0.
+                        scaler[cohort_mask] = LAI_co[cohort_mask] * 0.
                     else:
-                        scaler[cohort_mask] = MMEAN_LAI_co[cohort_mask] / np.sum(MMEAN_LAI_co[cohort_mask])
+                        scaler[cohort_mask] = LAI_co[cohort_mask] / np.sum(LAI_co[cohort_mask])
 
                 # scaling the variables
                 var_data *= np.reshape(np.repeat(scaler,dim2_len),var_data.shape)
@@ -662,8 +697,8 @@ def extract_profile_pft(
 # Third, file I/O and actual data extraction
 ###################################################
 data_path = Path(args.data_dir)
-# only allow for qmean data
-file_list = np.array(sorted(list(data_path.glob(f'{args.prefix}-Q-*.h5'))))
+# allow for both qmean and fmean data
+file_list = np.array(sorted(list(data_path.glob(f'{args.prefix}-{args.filetype}-*.h5'))))
 
 
 # modify file_list based on yeara, yearz, montha, monthz
@@ -695,25 +730,76 @@ file_list = np.delete(file_list,remove_indexes)
 ds_list = []
 
 # by default extract all possible variables
-voi_list = (
-      var_area + var_nplant
-    + var_nplant_norm + var_ba_norm + var_lai_norm
-)
+
+voi_std_list = ['NPLANT','BA','HITE','DBH',
+                'BDEADA','BDEADB', 'BSAPWOODA','BSAPWOODB'
+               ]
+
+voi_mmean_list = [
+    'MMEAN_LAI','MMEAN_BLEAF','MMEAN_BROOT',
+    'MMEAN_BBARKA','MMEAN_BBARKB','MMEAN_BSTORAGE',
+    'DDBH_DT','MMEAN_MORT_RATE','AGB'
+]
+
+voi_qmean_list = [
+    'QMEAN_LEAF_WATER','QMEAN_WOOD_WATER','QMEAN_INTERCEPTED_AL','QMEAN_INTERCEPTED_AW',
+    'QMEAN_SENSIBLE_LC','QMEAN_SENSIBLE_WC','QMEAN_TRANSP','QMEAN_VAPOR_LC',
+    'QMEAN_LEAF_WATER_IM2','QMEAN_WOOD_WATER_IM2',
+    'QMEAN_GPP','QMEAN_NPP','QMEAN_LEAF_RESP','QMEAN_PLRESP',
+    'QMEAN_A_NET','QMEAN_LEAF_GBW','QMEAN_LEAF_GSW','QMEAN_LEAF_TEMP','QMEAN_LEAF_VPDEF',
+    'QMEAN_LEAF_PSI','QMEAN_WOOD_PSI','QMEAN_WOOD_TEMP',
+]
+
+voi_fmean_list = [
+    'FMEAN_LEAF_WATER','FMEAN_WOOD_WATER','FMEAN_INTERCEPTED_AL','FMEAN_INTERCEPTED_AW',
+    'FMEAN_SENSIBLE_LC','FMEAN_SENSIBLE_WC','FMEAN_TRANSP','FMEAN_VAPOR_LC',
+    'FMEAN_LEAF_WATER_IM2','FMEAN_WOOD_WATER_IM2',
+    'FMEAN_GPP','FMEAN_NPP','FMEAN_LEAF_RESP','FMEAN_PLRESP',
+    'FMEAN_A_NET','FMEAN_LEAF_GBW','FMEAN_LEAF_GSW','FMEAN_LEAF_TEMP','FMEAN_LEAF_VPDEF',
+    'FMEAN_LEAF_PSI','FMEAN_LEAF_PSI','FMEAN_LEAF_PSI',
+    'BLEAF','BROOT','LAI','BBARKA','BBARKB','BSTORAGE'
+]
+
+if args.filetype == 'E':
+    # Monthly Mean
+
+    voi_list = voi_std_list + voi_mmean_list
+
+elif args.filetype == 'Q':
+    # QMEAN
+
+    voi_list = voi_std_list + voi_mmean_list + voi_qmean_list
+
+elif args.filetype == 'I':
+    # FMEAN
+
+    voi_list = voi_std_list + voi_fmean_list
+
+print(voi_list)
 
 for f in file_list:
     # get year and month to create time stamp
     sub_strs = f.name.split('-') # -Q-year-month-date
-    year, month = int(sub_strs[2]),int(sub_strs[3])
+    year, month, day, time = int(sub_strs[2]),int(sub_strs[3]),int(sub_strs[4]),int(sub_strs[5])
+
+    if day == 0:
+        # monthly data
+        day = 1 # first day of the month
+
+    hour, minute, second = int(time // 10000),int(time // 100 % 100), int(time % 100)
+
     
     ds_in = xr.open_dataset(f)
     
-    coord_time = [f'{year:04d}-{month:02d}-01']
+    coord_time = [f'{year:04d}-{month:02d}-{day:02d} {hour:02d}:{minute:02d}:{second:02d}']
+    print(coord_time[0])
     
     # add the profile dataset to array
     ds_list.append(
         extract_profile_pft(
              ds_in
             ,voi_list
+            ,args.filetype
             ,coord_time
             ,coord_size
             ,coord_pft
@@ -727,6 +813,6 @@ for f in file_list:
 
 ds_out = xr.concat(ds_list,dim='time')
 
-output_fn = args.out_dir + args.prefix + f'_profile_{args.size_type}.nc'
+output_fn = args.out_dir + args.prefix + f'_{args.filetype}_profile_{args.size_type}.nc'
 ds_out.to_netcdf(output_fn)
 ###################################################
