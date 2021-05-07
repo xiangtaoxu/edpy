@@ -841,10 +841,12 @@ def extract_fast(
 
     return
 
+
+# TODO: remove voi_add and include LINT_CO2 as a default variable after merging the version with
+# LINT_CO2 to ED2 mainline
 def extract_treering(
-     data_pf : 'path and prefix of the ED2 data'
-    ,out_dir : 'output director'
-    ,out_pf : 'output prefix'
+     data_pf        : 'path and prefix of the ED2 data'
+    ,csv_fn         : 'path and file name of output csv file'
     ,treering_yeara : 'year of the earliest treering to track'
     ,treering_yearz : 'year of the latest treering to track (or the year to tree coring)'
     ,last_month_of_year : 'the last month for a growth year' = 12
@@ -1335,7 +1337,6 @@ def extract_treering(
            ):
             # when there are more than 500 entries or it is the last month to check
             csv_df = pd.DataFrame(data = output_dict)[col_list]
-            csv_fn = out_dir + out_pf + 'treering.csv'
 
             if first_write:
                 csv_df.to_csv(csv_fn,index=False,mode='w',header=True,float_format='%.6g')
